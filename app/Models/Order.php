@@ -1,5 +1,5 @@
 <?php
-// app/Order.php
+// app/Models/Order.php
 
 namespace App\Models;
 
@@ -65,13 +65,14 @@ class Order extends Model
         return $this->hasMany(Payment::class);
     }
     
-    public function recalculate()
+    public function recalculate(): void
     {
-        $subtotal = $this->items->sum('total_price');
+        $subtotal = $this->items()->sum('total_price');
         $tax = (int) ($subtotal * 0.18);
         $serviceCharge = (int) ($subtotal * 0.05);
         $total = $subtotal + $tax + $serviceCharge;
-        $paid = $this->payments->where('status', 'completed')->sum('amount');
+        
+        $paid = $this->payments()->where('status', 'completed')->sum('amount');
         $due = $total - $paid;
         
         $this->update([
@@ -86,7 +87,7 @@ class Order extends Model
         if ($due <= 0 && $this->status !== 'paid') {
             $this->update(['status' => 'paid']);
             if ($this->table) {
-                $this->table->free();
+                $this->table->update(['status' => 'free', 'current_order_id' => null]);
             }
         }
     }

@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Table;
 use App\Models\User;
 use App\Models\Restaurant;
+use App\Models\MenuItem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 
@@ -17,21 +18,32 @@ class OrderTest extends TestCase
 
     private User $user;
     private Table $table;
+    private MenuItem $menuItem;
+    private Restaurant $restaurant;
 
     protected function setUp(): void
     {
         parent::setUp();
         
-        // Créer un restaurant d'abord
-        $restaurant = Restaurant::factory()->create();
+        // Créer un restaurant
+        $this->restaurant = Restaurant::factory()->create();
         
+        // Créer un utilisateur
         $this->user = User::factory()->create([
-            'restaurant_id' => $restaurant->id
+            'restaurant_id' => $this->restaurant->id
         ]);
         
+        // Créer une table
         $this->table = Table::factory()->create([
-            'restaurant_id' => $restaurant->id,
+            'restaurant_id' => $this->restaurant->id,
             'status' => 'free'
+        ]);
+        
+        // Créer un menu item
+        $this->menuItem = MenuItem::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'name' => 'Burger',
+            'price' => 5000
         ]);
     }
 
@@ -63,29 +75,37 @@ class OrderTest extends TestCase
             'status' => 'open'
         ]);
 
+        // Premier item avec le menu item existant
         $order->items()->create([
             'id' => (string) Str::uuid(),
-            'menu_item_id' => (string) Str::uuid(),
-            'item_name' => 'Burger',
+            'menu_item_id' => $this->menuItem->id,
+            'item_name' => $this->menuItem->name,
             'quantity' => 2,
-            'unit_price' => 5000,
-            'total_price' => 10000
+            'unit_price' => $this->menuItem->price,
+            'total_price' => $this->menuItem->price * 2
+        ]);
+
+        // Créer un deuxième menu item pour le test
+        $menuItem2 = MenuItem::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'name' => 'Coca Cola',
+            'price' => 1000
         ]);
 
         $order->items()->create([
             'id' => (string) Str::uuid(),
-            'menu_item_id' => (string) Str::uuid(),
-            'item_name' => 'Coca Cola',
+            'menu_item_id' => $menuItem2->id,
+            'item_name' => $menuItem2->name,
             'quantity' => 3,
-            'unit_price' => 1000,
-            'total_price' => 3000
+            'unit_price' => $menuItem2->price,
+            'total_price' => $menuItem2->price * 3
         ]);
 
         $order->recalculate();
 
         $this->assertEquals(13000, $order->subtotal);
-        $this->assertEquals(2340, $order->tax); // 18%
-        $this->assertEquals(650, $order->service_charge); // 5%
+        $this->assertEquals(2340, $order->tax);
+        $this->assertEquals(650, $order->service_charge);
         $this->assertEquals(15990, $order->total);
     }
 
@@ -100,17 +120,19 @@ class OrderTest extends TestCase
             'status' => 'open'
         ]);
 
+        // Ajouter un item avec le menu item existant
         $order->items()->create([
             'id' => (string) Str::uuid(),
-            'menu_item_id' => (string) Str::uuid(),
-            'item_name' => 'Burger',
+            'menu_item_id' => $this->menuItem->id,
+            'item_name' => $this->menuItem->name,
             'quantity' => 1,
-            'unit_price' => 5000,
-            'total_price' => 5000
+            'unit_price' => $this->menuItem->price,
+            'total_price' => $this->menuItem->price
         ]);
 
         $order->recalculate();
 
+        // Ajouter un paiement
         $order->payments()->create([
             'id' => (string) Str::uuid(),
             'user_id' => $this->user->id,
@@ -119,9 +141,21 @@ class OrderTest extends TestCase
             'status' => 'completed'
         ]);
 
+        // Recalculer après paiement
         $order->recalculate();
 
+        // Rafraîchir l'ordre depuis la base
+        $order = $order->fresh();
+
+        // Vérifications
         $this->assertEquals(3000, $order->paid_amount);
-        $this->assertEquals(3150, $order->due_amount); // 6150 - 3000
+        
+        $expectedTotal = $this->menuItem->price; // 5000
+        $expectedTax = (int) ($expectedTotal * 0.18); // 900
+        $expectedService = (int) ($expectedTotal * 0.05); // 250
+        $expectedGrandTotal = $expectedTotal + $expectedTax + $expectedService; // 6150
+        $expectedDue = $expectedGrandTotal - 3000; // 3150
+        
+        $this->assertEquals($expectedDue, $order->due_amount);
     }
 }
