@@ -1,11 +1,12 @@
 <?php
+
 // app/Http/Controllers/Api/MenuController.php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\MenuItem;
 use App\Models\Category;
+use App\Models\MenuItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -13,10 +14,10 @@ class MenuController extends Controller
 {
     public function index()
     {
-        $categories = Category::with(['menuItems' => function($q) {
+        $categories = Category::with(['menuItems' => function ($q) {
             $q->where('is_active', true)->orderBy('display_order');
         }])->orderBy('display_order')->get();
-        
+
         return response()->json($categories);
     }
 
@@ -30,7 +31,7 @@ class MenuController extends Controller
         $request->validate([
             'name' => 'required|string',
             'price' => 'required|integer|min:0',
-            'category_id' => 'nullable|exists:categories,id'
+            'category_id' => 'nullable|exists:categories,id',
         ]);
 
         $item = MenuItem::create([
@@ -40,7 +41,7 @@ class MenuController extends Controller
             'name' => $request->name,
             'price' => $request->price,
             'is_available' => true,
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         return response()->json($item, 201);
@@ -49,18 +50,21 @@ class MenuController extends Controller
     public function update(Request $request, MenuItem $item)
     {
         $item->update($request->only(['name', 'price', 'category_id', 'description', 'preparation_time']));
+
         return response()->json($item);
     }
 
     public function destroy(MenuItem $item)
     {
         $item->delete();
+
         return response()->json(null, 204);
     }
 
     public function toggleAvailability(MenuItem $item)
     {
-        $item->update(['is_available' => !$item->is_available]);
+        $item->update(['is_available' => ! $item->is_available]);
+
         return response()->json($item);
     }
 }

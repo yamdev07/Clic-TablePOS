@@ -1,12 +1,13 @@
 <?php
+
 // app/Http/Controllers/Api/OrderController.php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\Table;
-use App\Models\MenuItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -17,7 +18,7 @@ class OrderController extends Controller
         $orders = Order::with(['table', 'user', 'items.menuItem'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);
-        
+
         return response()->json($orders);
     }
 
@@ -29,7 +30,7 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'table_id' => 'required|exists:tables,id'
+            'table_id' => 'required|exists:tables,id',
         ]);
 
         $table = Table::findOrFail($request->table_id);
@@ -43,7 +44,7 @@ class OrderController extends Controller
             'restaurant_id' => $request->user()->restaurant_id,
             'table_id' => $table->id,
             'user_id' => $request->user()->id,
-            'status' => 'open'
+            'status' => 'open',
         ]);
 
         $table->update(['status' => 'occupied', 'current_order_id' => $order->id]);
@@ -55,7 +56,7 @@ class OrderController extends Controller
     {
         $request->validate([
             'menu_item_id' => 'required|exists:menu_items,id',
-            'quantity' => 'integer|min:1'
+            'quantity' => 'integer|min:1',
         ]);
 
         $menuItem = MenuItem::findOrFail($request->menu_item_id);
@@ -67,7 +68,7 @@ class OrderController extends Controller
             'quantity' => $request->quantity ?? 1,
             'unit_price' => $menuItem->price,
             'total_price' => $menuItem->price * ($request->quantity ?? 1),
-            'kitchen_status' => 'pending'
+            'kitchen_status' => 'pending',
         ]);
 
         $order->recalculate();
@@ -79,18 +80,18 @@ class OrderController extends Controller
     {
         $order->items()->where('id', $itemId)->delete();
         $order->recalculate();
-        
+
         return response()->json(['message' => 'Item supprimé']);
     }
 
     public function confirm(Order $order)
     {
         $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
-        
+
         foreach ($order->items as $item) {
             $item->update(['kitchen_status' => 'pending']);
         }
-        
+
         return response()->json(['message' => 'Commande confirmée']);
     }
 
@@ -98,14 +99,14 @@ class OrderController extends Controller
     {
         $order->update(['status' => 'cancelled']);
         $order->table->update(['status' => 'free', 'current_order_id' => null]);
-        
+
         return response()->json(['message' => 'Commande annulée']);
     }
 
     public function sendToKitchen(Order $order)
     {
         $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
-        
+
         return response()->json(['message' => 'Envoyé en cuisine']);
     }
 }

@@ -1,0 +1,97 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: clicettable_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_pgsql, redis, bcmath
+          coverage: none
+          
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+        
+      - name: Copy environment file
+        run: |
+          cp .env.example .env || true
+          echo "APP_KEY=" >> .env
+          
+      - name: Generate key
+        run: php artisan key:generate
+        
+      - name: Run migrations
+        run: php artisan migrate --force
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: clicettable_test
+          DB_USERNAME: postgres
+          DB_PASSWORD: password
+          
+      - name: Run tests
+        run: php artisan test
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: clicettable_test
+          DB_USERNAME: postgres
+          DB_PASSWORD: password
+          
+      - name: Run Pint (code style)
+        run: ./vendor/bin/pint --test || true
+          
+      # Larastan est optionnel - on le garde mais on ignore les erreurs
+      - name: Run Larastan (static analysis)
+        run: ./vendor/bin/phpstan analyse app --memory-limit=2G --no-progress || true
+        continue-on-error: true
+
+  deploy:
+    needs: tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "✅ Tests passed! Ready to deploy Clic&Table"
+          echo "📦 Add your deployment script here:"
+          echo "   - Laravel Forge"
+          echo "   - Envoyer"
+          echo "   - Docker + Kubernetes"
+          echo "   - AWS Elastic Beanstalk"

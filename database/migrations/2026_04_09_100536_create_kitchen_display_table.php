@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000009_create_kitchen_display_table.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -19,17 +20,17 @@ return new class extends Migration
             $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
-            
+
             $table->foreign('restaurant_id')
-                  ->references('id')
-                  ->on('restaurants')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('restaurants')
+                ->onDelete('cascade');
+
             $table->foreign('order_id')
-                  ->references('id')
-                  ->on('orders')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('orders')
+                ->onDelete('cascade');
+
             $table->index(['restaurant_id', 'status', 'priority']);
             $table->index('created_at');
         });

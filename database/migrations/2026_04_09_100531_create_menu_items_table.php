@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000004_create_menu_items_table.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -26,17 +27,17 @@ return new class extends Migration
             $table->jsonb('modifiers')->default('[]');
             $table->jsonb('taxes')->default('[]');
             $table->timestamps();
-            
+
             $table->foreign('restaurant_id')
-                  ->references('id')
-                  ->on('restaurants')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('restaurants')
+                ->onDelete('cascade');
+
             $table->foreign('category_id')
-                  ->references('id')
-                  ->on('categories')
-                  ->onDelete('set null');
-                  
+                ->references('id')
+                ->on('categories')
+                ->onDelete('set null');
+
             $table->index(['restaurant_id', 'is_available', 'is_active']);
             $table->index(['restaurant_id', 'category_id']);
             $table->index('name');

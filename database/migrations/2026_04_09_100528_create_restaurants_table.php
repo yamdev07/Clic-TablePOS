@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000001_create_restaurants_table.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -24,19 +25,19 @@ return new class extends Migration
                 'kitchen_print_auto' => true,
                 'enable_prepayment' => false,
                 'service_charge' => 0,
-                'tax_rate' => 18
+                'tax_rate' => 18,
             ]));
             $table->jsonb('payment_gateways')->default(json_encode([
                 'cash' => true,
                 'wave' => false,
                 'orange_money' => false,
-                'free_money' => false
+                'free_money' => false,
             ]));
             $table->enum('status', ['active', 'suspended', 'trial'])->default('active');
             $table->timestamp('trial_ends_at')->nullable();
             $table->timestamps();
             $table->softDeletes();
-            
+
             $table->index(['slug', 'status']);
             $table->index('email');
         });

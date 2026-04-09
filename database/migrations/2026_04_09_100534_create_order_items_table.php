@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000007_create_order_items_table.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -22,16 +23,16 @@ return new class extends Migration
             $table->text('special_instructions')->nullable();
             $table->jsonb('modifiers')->default('[]');
             $table->timestamps();
-            
+
             $table->foreign('order_id')
-                  ->references('id')
-                  ->on('orders')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('orders')
+                ->onDelete('cascade');
+
             $table->foreign('menu_item_id')
-                  ->references('id')
-                  ->on('menu_items');
-                  
+                ->references('id')
+                ->on('menu_items');
+
             $table->index(['order_id', 'kitchen_status']);
             $table->index('kitchen_status');
         });

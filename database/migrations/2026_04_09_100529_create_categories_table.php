@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000003_create_categories_table.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -19,12 +20,12 @@ return new class extends Migration
             $table->integer('display_order')->default(0);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->foreign('restaurant_id')
-                  ->references('id')
-                  ->on('restaurants')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('restaurants')
+                ->onDelete('cascade');
+
             $table->unique(['restaurant_id', 'name']);
             $table->index(['restaurant_id', 'is_active', 'display_order']);
         });
