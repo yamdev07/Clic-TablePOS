@@ -1,48 +1,43 @@
 <?php
+// app/Models/User.php
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;  // ← CETTE LIGNE EST ESSENTIELLE
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
-
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
+    use HasApiTokens, HasFactory;
+    
+    public $incrementing = false;
+    protected $keyType = 'string';
+    
     protected $fillable = [
-        'name',
-        'email',
-        'password',
+        'id', 'restaurant_id', 'name', 'email', 'password',
+        'role', 'permissions', 'is_active', 'avatar', 'phone', 'last_login_at'
     ];
-
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
+    
+    protected $hidden = ['password', 'remember_token'];
+    
+    protected $casts = [
+        'permissions' => 'array',
+        'is_active' => 'boolean',
     ];
-
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
+    
+    public function restaurant()
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return $this->belongsTo(Restaurant::class);
+    }
+    
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+    
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
     }
 }
