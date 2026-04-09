@@ -1,10 +1,11 @@
 <?php
+
 // database/factories/TableFactory.php
 
 namespace Database\Factories;
 
-use App\Models\Table;
 use App\Models\Restaurant;
+use App\Models\Table;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -20,7 +21,7 @@ class TableFactory extends Factory
             'number' => (string) fake()->numberBetween(1, 50),
             'capacity' => fake()->numberBetween(2, 8),
             'status' => 'free',
-            'qr_code' => 'https://clicettable.com/t/' . Str::random(8),
+            'qr_code' => 'https://clicettable.com/t/'.Str::random(8),
         ];
     }
 }

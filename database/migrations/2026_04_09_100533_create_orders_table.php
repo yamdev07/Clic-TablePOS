@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000006_create_orders_table.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -29,20 +30,20 @@ return new class extends Migration
             $table->timestamp('confirmed_at')->nullable();
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
-            
+
             $table->foreign('restaurant_id')
-                  ->references('id')
-                  ->on('restaurants')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('restaurants')
+                ->onDelete('cascade');
+
             $table->foreign('table_id')
-                  ->references('id')
-                  ->on('tables');
-                  
+                ->references('id')
+                ->on('tables');
+
             $table->foreign('user_id')
-                  ->references('id')
-                  ->on('users');
-                  
+                ->references('id')
+                ->on('users');
+
             $table->index(['restaurant_id', 'status']);
             $table->index(['table_id', 'status']);
             $table->index('order_number');

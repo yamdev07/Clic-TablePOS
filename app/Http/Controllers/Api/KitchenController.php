@@ -1,4 +1,5 @@
 <?php
+
 // app/Http/Controllers/Api/KitchenController.php
 
 namespace App\Http\Controllers\Api;
@@ -11,33 +12,36 @@ class KitchenController extends Controller
 {
     public function pendingOrders(Request $request)
     {
-        $items = OrderItem::whereHas('order', function($q) use ($request) {
-                $q->where('restaurant_id', $request->user()->restaurant_id)
-                  ->whereIn('status', ['in_progress', 'ready']);
-            })
+        $items = OrderItem::whereHas('order', function ($q) use ($request) {
+            $q->where('restaurant_id', $request->user()->restaurant_id)
+                ->whereIn('status', ['in_progress', 'ready']);
+        })
             ->with(['order.table', 'menuItem'])
             ->whereIn('kitchen_status', ['pending', 'cooking'])
             ->orderBy('created_at')
             ->get();
-            
+
         return response()->json($items);
     }
 
     public function startCooking(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'cooking']);
+
         return response()->json(['message' => 'Préparation commencée']);
     }
 
     public function markReady(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'ready']);
+
         return response()->json(['message' => 'Plat prêt']);
     }
 
     public function markServed(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'served']);
+
         return response()->json(['message' => 'Plat servi']);
     }
 }

@@ -1,4 +1,5 @@
 <?php
+
 // database/factories/RestaurantFactory.php
 
 namespace Database\Factories;
@@ -15,7 +16,7 @@ class RestaurantFactory extends Factory
     {
         return [
             'id' => (string) Str::uuid(),
-            'name' => fake()->company() . ' Restaurant',
+            'name' => fake()->company().' Restaurant',
             'slug' => fake()->slug(),
             'email' => fake()->unique()->companyEmail(),
             'status' => 'active',

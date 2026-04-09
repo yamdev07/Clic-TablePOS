@@ -1,4 +1,5 @@
 <?php
+
 // database/migrations/2024_01_01_000002_create_users_table.php
 
 use Illuminate\Database\Migrations\Migration;
@@ -24,12 +25,12 @@ return new class extends Migration
             $table->timestamp('last_login_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
-            
+
             $table->foreign('restaurant_id')
-                  ->references('id')
-                  ->on('restaurants')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('restaurants')
+                ->onDelete('cascade');
+
             $table->index(['restaurant_id', 'role']);
             $table->index('email');
             $table->index('is_active');

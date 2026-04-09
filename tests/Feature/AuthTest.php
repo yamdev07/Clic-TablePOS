@@ -1,13 +1,14 @@
 <?php
+
 // tests/Feature/AuthTest.php
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
 use App\Models\Restaurant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Tests\TestCase;
 
 class AuthTest extends TestCase
 {
@@ -18,13 +19,13 @@ class AuthTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->restaurant = Restaurant::create([
             'id' => (string) Str::uuid(),
             'name' => 'Test Restaurant',
             'slug' => 'test-restaurant',
             'email' => 'test@restaurant.com',
-            'status' => 'active'
+            'status' => 'active',
         ]);
     }
 
@@ -38,19 +39,19 @@ class AuthTest extends TestCase
             'email' => 'test@example.com',
             'password' => bcrypt('password123'),
             'role' => 'admin',
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         $response = $this->postJson('/api/login', [
             'email' => 'test@example.com',
-            'password' => 'password123'
+            'password' => 'password123',
         ]);
 
         $response->assertStatus(200)
-                 ->assertJsonStructure([
-                     'user' => ['id', 'name', 'email', 'role'],
-                     'token'
-                 ]);
+            ->assertJsonStructure([
+                'user' => ['id', 'name', 'email', 'role'],
+                'token',
+            ]);
     }
 
     /** @test */
@@ -63,16 +64,16 @@ class AuthTest extends TestCase
             'email' => 'test@example.com',
             'password' => bcrypt('password123'),
             'role' => 'admin',
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         $response = $this->postJson('/api/login', [
             'email' => 'test@example.com',
-            'password' => 'wrongpassword'
+            'password' => 'wrongpassword',
         ]);
 
         $response->assertStatus(401)
-                 ->assertJson(['message' => 'Identifiants incorrects']);
+            ->assertJson(['message' => 'Identifiants incorrects']);
     }
 
     /** @test */
@@ -85,13 +86,13 @@ class AuthTest extends TestCase
             'email' => 'test@example.com',
             'password' => bcrypt('password123'),
             'role' => 'admin',
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         $response = $this->actingAs($user, 'sanctum')
-                         ->getJson('/api/me');
+            ->getJson('/api/me');
 
         $response->assertStatus(200)
-                 ->assertJson(['id' => $user->id]);
+            ->assertJson(['id' => $user->id]);
     }
 }

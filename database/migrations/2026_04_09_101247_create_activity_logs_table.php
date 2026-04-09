@@ -20,17 +20,17 @@ return new class extends Migration
             $table->string('ip_address')->nullable();
             $table->string('user_agent')->nullable();
             $table->timestamps();
-            
+
             $table->foreign('restaurant_id')
-                  ->references('id')
-                  ->on('restaurants')
-                  ->onDelete('cascade');
-                  
+                ->references('id')
+                ->on('restaurants')
+                ->onDelete('cascade');
+
             $table->foreign('user_id')
-                  ->references('id')
-                  ->on('users')
-                  ->onDelete('set null');
-                  
+                ->references('id')
+                ->on('users')
+                ->onDelete('set null');
+
             $table->index(['restaurant_id', 'entity_type', 'entity_id']);
             $table->index('created_at');
             $table->index('action');

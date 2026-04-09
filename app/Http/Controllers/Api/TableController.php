@@ -1,4 +1,5 @@
 <?php
+
 // app/Http/Controllers/Api/TableController.php
 
 namespace App\Http\Controllers\Api;
@@ -13,6 +14,7 @@ class TableController extends Controller
     public function index()
     {
         $tables = Table::with('currentOrder')->orderBy('number')->get();
+
         return response()->json($tables);
     }
 
@@ -25,7 +27,7 @@ class TableController extends Controller
     {
         $request->validate([
             'number' => 'required|string',
-            'capacity' => 'integer|min:1'
+            'capacity' => 'integer|min:1',
         ]);
 
         $table = Table::create([
@@ -34,7 +36,7 @@ class TableController extends Controller
             'number' => $request->number,
             'capacity' => $request->capacity ?? 4,
             'status' => 'free',
-            'qr_code' => 'https://clicettable.com/t/' . Str::random(8)
+            'qr_code' => 'https://clicettable.com/t/'.Str::random(8),
         ]);
 
         return response()->json($table, 201);
@@ -43,22 +45,25 @@ class TableController extends Controller
     public function update(Request $request, Table $table)
     {
         $table->update($request->only(['number', 'capacity', 'x_position', 'y_position']));
+
         return response()->json($table);
     }
 
     public function destroy(Table $table)
     {
         $table->delete();
+
         return response()->json(null, 204);
     }
 
     public function updateStatus(Request $request, Table $table)
     {
         $request->validate([
-            'status' => 'required|in:free,occupied,reserved,dirty'
+            'status' => 'required|in:free,occupied,reserved,dirty',
         ]);
-        
+
         $table->update(['status' => $request->status]);
+
         return response()->json($table);
     }
 }

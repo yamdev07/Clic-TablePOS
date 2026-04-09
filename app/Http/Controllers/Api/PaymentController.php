@@ -1,4 +1,5 @@
 <?php
+
 // app/Http/Controllers/Api/PaymentController.php
 
 namespace App\Http\Controllers\Api;
@@ -20,13 +21,13 @@ class PaymentController extends Controller
     {
         $request->validate([
             'amount' => 'required|integer|min:1',
-            'method' => 'required|in:cash,card,wave,orange_money'
+            'method' => 'required|in:cash,card,wave,orange_money',
         ]);
 
         // Vérifier si la commande est déjà payée
         if ($order->due_amount <= 0) {
             return response()->json([
-                'message' => 'Cette commande est déjà entièrement payée'
+                'message' => 'Cette commande est déjà entièrement payée',
             ], 422);
         }
 
@@ -34,7 +35,7 @@ class PaymentController extends Controller
         if ($request->amount > $order->due_amount) {
             return response()->json([
                 'message' => 'Le montant dépasse le montant dû',
-                'due_amount' => $order->due_amount
+                'due_amount' => $order->due_amount,
             ], 422);
         }
 
@@ -44,7 +45,7 @@ class PaymentController extends Controller
             'user_id' => $request->user()->id,
             'amount' => $request->amount,
             'method' => $request->method,
-            'status' => 'completed'
+            'status' => 'completed',
         ]);
 
         $order->recalculate();

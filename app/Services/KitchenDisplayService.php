@@ -1,10 +1,11 @@
 <?php
+
 // app/Services/KitchenDisplayService.php
 
 namespace App\Services;
 
-use App\Models\Order;
 use App\Models\KitchenDisplay;
+use App\Models\Order;
 
 class KitchenDisplayService
 {
@@ -24,14 +25,19 @@ class KitchenDisplayService
             );
         }
     }
-    
+
     private function calculatePriority(Order $order): int
     {
         // Les commandes avec plus d'items ont priorité
         $itemCount = $order->items->count();
-        
-        if ($itemCount > 5) return 1;  // Haute priorité
-        if ($itemCount > 2) return 2;  // Priorité normale
+
+        if ($itemCount > 5) {
+            return 1;
+        }  // Haute priorité
+        if ($itemCount > 2) {
+            return 2;
+        }  // Priorité normale
+
         return 3;                       // Priorité basse
     }
 }

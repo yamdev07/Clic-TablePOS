@@ -1,9 +1,11 @@
 <?php
+
 // app/Http/Controllers/Api/AuthController.php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -16,15 +18,15 @@ class AuthController extends Controller
         try {
             $request->validate([
                 'email' => 'required|email',
-                'password' => 'required'
+                'password' => 'required',
             ]);
 
             $user = User::where('email', $request->email)->first();
 
-            if (!$user || !Hash::check($request->password, $user->password)) {
+            if (! $user || ! Hash::check($request->password, $user->password)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Identifiants incorrects'
+                    'message' => 'Identifiants incorrects',
                 ], 401);
             }
 
@@ -36,9 +38,9 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
-                    'role' => $user->role
+                    'role' => $user->role,
                 ],
-                'token' => $token
+                'token' => $token,
             ]);
 
         } catch (\Exception $e) {
@@ -46,7 +48,7 @@ class AuthController extends Controller
                 'success' => false,
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
+                'line' => $e->getLine(),
             ], 500);
         }
     }
@@ -56,12 +58,12 @@ class AuthController extends Controller
         $request->validate([
             'name' => 'required|string',
             'email' => 'required|email|unique:users',
-            'password' => 'required|min:6'
+            'password' => 'required|min:6',
         ]);
 
-        $restaurant = \App\Models\Restaurant::first();
+        $restaurant = Restaurant::first();
 
-        if (!$restaurant) {
+        if (! $restaurant) {
             return response()->json(['message' => 'Aucun restaurant trouvé'], 400);
         }
 
@@ -72,20 +74,21 @@ class AuthController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'waiter',
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'user' => $user,
-            'token' => $token
+            'token' => $token,
         ], 201);
     }
 
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
+
         return response()->json(['message' => 'Déconnecté']);
     }
 

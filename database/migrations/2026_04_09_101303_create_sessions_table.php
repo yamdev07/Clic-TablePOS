@@ -15,7 +15,7 @@ return new class extends Migration
             $table->text('user_agent')->nullable();
             $table->longText('payload');
             $table->integer('last_activity');
-            
+
             $table->index('user_id');
             $table->index('last_activity');
         });
