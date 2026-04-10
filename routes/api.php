@@ -44,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{order}/confirm', [OrderController::class, 'confirm']);
     Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel']);
     Route::post('/orders/{order}/send-to-kitchen', [OrderController::class, 'sendToKitchen']);
+    Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']); // ← AJOUTÉ
 
     // Kitchen
     Route::get('/kitchen/pending', [KitchenController::class, 'pendingOrders']);
@@ -56,7 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index']);
 });
 
-// À ajouter à la fin du fichier
+// Route de test
 Route::get('/test', function () {
     return response()->json(['message' => 'API works!']);
 });
