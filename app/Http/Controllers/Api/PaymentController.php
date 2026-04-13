@@ -19,25 +19,35 @@ class PaymentController extends Controller
     public function store(Request $request, Order $order)
     {
         $request->validate([
-            'amount' => 'required|integer|min:1',
-            'method' => 'required|in:cash,card,wave,orange_money',
+            'amount'       => 'required|integer|min:1',
+            'method'       => 'required|in:cash,card,wave,orange_money',
+            'cash_given'   => 'nullable|integer|min:1',
+            'reference'    => 'nullable|string|max:255',
         ]);
 
         if ($order->due_amount <= 0) {
             return response()->json(['message' => 'Cette commande est déjà entièrement payée'], 422);
         }
 
-        if ($request->amount > $order->due_amount) {
+        // For cash payments allow sending more than due (the change is handled client-side)
+        // For other methods, enforce exact amount
+        $amountToRecord = $request->amount;
+        if ($request->method !== 'cash' && $amountToRecord > $order->due_amount) {
             return response()->json(['message' => 'Le montant dépasse le montant dû', 'due_amount' => $order->due_amount], 422);
+        }
+        // Cap at due_amount regardless (we record what we receive, change is returned to customer)
+        if ($amountToRecord > $order->due_amount) {
+            $amountToRecord = $order->due_amount;
         }
 
         $payment = Payment::create([
-            'id'       => (string) Str::uuid(),
-            'order_id' => $order->id,
-            'user_id'  => $request->user()->id,
-            'amount'   => $request->amount,
-            'method'   => $request->method,
-            'status'   => 'completed',
+            'id'        => (string) Str::uuid(),
+            'order_id'  => $order->id,
+            'user_id'   => $request->user()->id,
+            'amount'    => $amountToRecord,
+            'method'    => $request->method,
+            'reference' => $request->reference,
+            'status'    => 'completed',
         ]);
 
         $order->recalculate();

@@ -12,11 +12,16 @@ use Illuminate\Support\Str;
 
 class OrderController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $orders = Order::with(['table', 'user', 'items.menuItem'])
+        $orders = Order::with([
+                'table:id,number,capacity',
+                'user:id,name,role',
+                'items:id,order_id,menu_item_id,item_name,quantity,unit_price,total_price,kitchen_status',
+            ])
+            ->where('restaurant_id', $request->user()->restaurant_id)
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate(30);
 
         return response()->json($orders);
     }
@@ -70,21 +75,23 @@ class OrderController extends Controller
     {
         try {
             $request->validate([
-                'menu_item_id' => 'required|exists:menu_items,id',
-                'quantity'     => 'integer|min:1',
+                'menu_item_id'          => 'required|exists:menu_items,id',
+                'quantity'              => 'integer|min:1',
+                'special_instructions'  => 'nullable|string|max:500',
             ]);
 
             $menuItem  = MenuItem::findOrFail($request->menu_item_id);
             $quantity  = $request->quantity ?? 1;
 
             $orderItem = $order->items()->create([
-                'id'             => (string) Str::uuid(),
-                'menu_item_id'   => $menuItem->id,
-                'item_name'      => $menuItem->name,
-                'quantity'       => $quantity,
-                'unit_price'     => $menuItem->price,
-                'total_price'    => $menuItem->price * $quantity,
-                'kitchen_status' => 'pending',
+                'id'                    => (string) Str::uuid(),
+                'menu_item_id'          => $menuItem->id,
+                'item_name'             => $menuItem->name,
+                'quantity'              => $quantity,
+                'unit_price'            => $menuItem->price,
+                'total_price'           => $menuItem->price * $quantity,
+                'kitchen_status'        => 'pending',
+                'special_instructions'  => $request->special_instructions,
             ]);
 
             $order->recalculate();

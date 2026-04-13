@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\KitchenController;
 use App\Http\Controllers\Api\LogController;
+use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
@@ -53,10 +54,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/kitchen/items/{item}/cooking', [KitchenController::class, 'startCooking']);
     Route::patch('/kitchen/items/{item}/ready', [KitchenController::class, 'markReady']);
     Route::patch('/kitchen/items/{item}/serve', [KitchenController::class, 'markServed']);
+    Route::patch('/kitchen/items/{item}/rupture', [KitchenController::class, 'markOutOfStock']);
 
     // Payments
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store']);
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index']);
+
+    // Stats sidebar (1 appel au lieu de 2)
+    Route::get('/stats', [StatsController::class, 'index']);
+    Route::get('/stats/z-report', [StatsController::class, 'zReport']);
 
     // Logs (admin only)
     Route::get('/logs', [LogController::class, 'index']);
