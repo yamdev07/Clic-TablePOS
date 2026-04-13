@@ -88,8 +88,9 @@ class Order extends Model
 
         if ($due <= 0 && $this->status !== 'paid') {
             $this->update(['status' => 'paid']);
-            if ($this->table) {
-                $this->table->update(['status' => 'free', 'current_order_id' => null]);
+            $table = $this->table()->first();
+            if ($table) {
+                $table->update(['status' => 'free', 'current_order_id' => null]);
             }
         }
     }

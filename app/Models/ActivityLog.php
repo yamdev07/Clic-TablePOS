@@ -19,8 +19,8 @@ class ActivityLog extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'restaurant_id', 'user_id', 'action', 'entity_type',
-        'entity_id', 'old_values', 'new_values', 'ip_address', 'user_agent',
+        'id', 'restaurant_id', 'user_id', 'user_name', 'action', 'description',
+        'entity_type', 'entity_id', 'old_values', 'new_values', 'ip_address', 'user_agent',
     ];
 
     protected $casts = [

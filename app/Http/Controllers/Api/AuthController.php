@@ -1,12 +1,12 @@
 <?php
 
-// app/Http/Controllers/Api/AuthController.php
-
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Restaurant;
 use App\Models\User;
+use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -32,13 +32,30 @@ class AuthController extends Controller
 
             $token = $user->createToken('auth_token')->plainTextToken;
 
+            // Log connexion
+            ActivityLog::create([
+                'restaurant_id' => $user->restaurant_id,
+                'user_id'       => $user->id,
+                'user_name'     => $user->name,
+                'action'        => 'auth.login',
+                'description'   => "{$user->name} s'est connecté(e)",
+                'entity_type'   => 'user',
+                'entity_id'     => $user->id,
+                'old_values'    => [],
+                'new_values'    => [],
+                'ip_address'    => $request->ip(),
+                'user_agent'    => substr($request->userAgent() ?? '', 0, 255),
+            ]);
+
+            $user->update(['last_login_at' => now()]);
+
             return response()->json([
                 'success' => true,
                 'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
+                    'id'    => $user->id,
+                    'name'  => $user->name,
                     'email' => $user->email,
-                    'role' => $user->role,
+                    'role'  => $user->role,
                 ],
                 'token' => $token,
             ]);
@@ -47,8 +64,8 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
             ], 500);
         }
     }
@@ -56,8 +73,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $request->validate([
-            'name' => 'required|string',
-            'email' => 'required|email|unique:users',
+            'name'     => 'required|string',
+            'email'    => 'required|email|unique:users',
             'password' => 'required|min:6',
         ]);
 
@@ -68,26 +85,27 @@ class AuthController extends Controller
         }
 
         $user = User::create([
-            'id' => (string) Str::uuid(),
+            'id'            => (string) Str::uuid(),
             'restaurant_id' => $restaurant->id,
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => 'waiter',
-            'is_active' => true,
+            'name'          => $request->name,
+            'email'         => $request->email,
+            'password'      => Hash::make($request->password),
+            'role'          => 'waiter',
+            'is_active'     => true,
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
-            'user' => $user,
-            'token' => $token,
-        ], 201);
+        return response()->json(['user' => $user, 'token' => $token], 201);
     }
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+
+        LogService::log($request, 'auth.logout', "{$user->name} s'est déconnecté(e)", 'user', $user->id);
+
+        $user->currentAccessToken()->delete();
 
         return response()->json(['message' => 'Déconnecté']);
     }
