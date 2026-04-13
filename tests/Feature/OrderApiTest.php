@@ -66,7 +66,8 @@ class OrderApiTest extends TestCase
 
         $response->assertStatus(201)
             ->assertJsonStructure([
-                'id', 'order_number', 'status', 'table_id',
+                'success',
+                'data' => ['id', 'order_number', 'status', 'table_id'],
             ]);
     }
 

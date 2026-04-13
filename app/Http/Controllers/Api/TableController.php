@@ -10,14 +10,19 @@ use Illuminate\Support\Str;
 
 class TableController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Table::with('currentOrder')->orderBy('number')->get());
+        return response()->json(
+            Table::with(['currentOrder.items:id,order_id,item_name,quantity,kitchen_status,special_instructions'])
+                ->where('restaurant_id', $request->user()->restaurant_id)
+                ->orderBy('number')
+                ->get()
+        );
     }
 
     public function show(Table $table)
     {
-        return response()->json($table->load('currentOrder'));
+        return response()->json($table->load(['currentOrder.items']));
     }
 
     public function store(Request $request)

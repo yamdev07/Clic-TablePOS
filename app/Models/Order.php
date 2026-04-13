@@ -42,6 +42,21 @@ class Order extends Model
         });
     }
 
+    /**
+     * Restreindre le route model binding au restaurant de l'utilisateur connecté.
+     * Retourne 404 si l'order appartient à un autre restaurant.
+     */
+    public function resolveRouteBinding($value, $field = null): static
+    {
+        $query = $this->where($field ?? $this->getRouteKeyName(), $value);
+
+        if (auth()->check()) {
+            $query->where('restaurant_id', auth()->user()->restaurant_id);
+        }
+
+        return $query->firstOrFail();
+    }
+
     public function restaurant()
     {
         return $this->belongsTo(Restaurant::class);
