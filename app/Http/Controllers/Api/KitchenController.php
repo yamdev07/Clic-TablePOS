@@ -4,6 +4,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\OrderItemStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Models\MenuItem;
 use App\Models\OrderItem;
@@ -28,6 +29,7 @@ class KitchenController extends Controller
     public function startCooking(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'cooking']);
+        broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers();
 
         return response()->json(['message' => 'Préparation commencée']);
     }
@@ -35,6 +37,7 @@ class KitchenController extends Controller
     public function markReady(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'ready']);
+        broadcast(new OrderItemStatusChanged($item->load('order.table')));
 
         return response()->json(['message' => 'Plat prêt']);
     }
@@ -42,6 +45,7 @@ class KitchenController extends Controller
     public function markServed(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'served']);
+        broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers();
 
         return response()->json(['message' => 'Plat servi']);
     }
@@ -53,6 +57,7 @@ class KitchenController extends Controller
 
         // Also remove this item from the kitchen queue (cancel it)
         $item->update(['kitchen_status' => 'served']);
+        broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers();
 
         return response()->json(['message' => 'Rupture signalée — plat retiré du menu']);
     }

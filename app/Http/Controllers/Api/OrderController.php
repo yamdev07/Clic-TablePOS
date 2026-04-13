@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\NewOrderReceived;
+use App\Events\OrderStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Models\MenuItem;
 use App\Models\Order;
@@ -174,6 +176,8 @@ class OrderController extends Controller
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
 
+            broadcast(new NewOrderReceived($order))->toOthers();
+
             LogService::log($request, 'order.sent_to_kitchen',
                 "Commande #{$order->order_number} envoyée en cuisine",
                 'order', $order->id);
@@ -198,6 +202,8 @@ class OrderController extends Controller
             if (in_array($request->status, ['paid', 'cancelled']) && $order->table) {
                 $order->table->update(['status' => 'free', 'current_order_id' => null]);
             }
+
+            broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers();
 
             LogService::log($request, 'order.status_updated',
                 "Commande #{$order->order_number} : {$oldStatus} → {$request->status}",
