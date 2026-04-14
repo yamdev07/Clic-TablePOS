@@ -29,8 +29,17 @@ class TableController extends Controller
     {
         $request->validate([
             'number'   => 'required|string',
-            'capacity' => 'integer|min:1',
+            'capacity' => 'integer|min:1|max:20',
         ]);
+
+        $restaurantId = $request->user()->restaurant_id;
+        $currentCount = Table::where('restaurant_id', $restaurantId)->count();
+
+        if ($currentCount >= 50) {
+            return response()->json([
+                'message' => 'Limite atteinte : maximum 50 tables par restaurant.',
+            ], 422);
+        }
 
         $table = Table::create([
             'id'            => (string) Str::uuid(),

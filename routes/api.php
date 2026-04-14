@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\KitchenController;
 use App\Http\Controllers\Api\LogController;
 use App\Http\Controllers\Api\StatsController;
@@ -29,6 +30,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/tables/{table}', [TableController::class, 'update']);
     Route::delete('/tables/{table}', [TableController::class, 'destroy']);
     Route::patch('/tables/{table}/status', [TableController::class, 'updateStatus']);
+
+    // Catégories
+    Route::post('/categories', [CategoryController::class, 'store']);
+    Route::put('/categories/{category}', [CategoryController::class, 'update']);
+    Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
 
     // Menu
     Route::get('/menu', [MenuController::class, 'index']);

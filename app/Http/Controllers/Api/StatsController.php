@@ -15,8 +15,9 @@ class StatsController extends Controller
     {
         $restaurantId = $request->user()->restaurant_id;
 
-        // Cache 10 secondes — les stats changent souvent mais pas à chaque ms
-        $stats = Cache::remember("stats_{$restaurantId}", 10, function () use ($restaurantId) {
+        $stats = Cache::remember("stats_{$restaurantId}", 15, function () use ($restaurantId) {
+            $today = now()->toDateString();
+
             $tables = Table::where('restaurant_id', $restaurantId)
                 ->selectRaw('COUNT(*) as total, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as occupied', ['occupied'])
                 ->first();
@@ -25,10 +26,17 @@ class StatsController extends Controller
                 ->whereNotIn('status', ['paid', 'cancelled'])
                 ->count();
 
+            $todayStats = Order::where('restaurant_id', $restaurantId)
+                ->whereDate('created_at', $today)
+                ->selectRaw('COUNT(*) as today_orders, COALESCE(SUM(CASE WHEN status = ? THEN total ELSE 0 END), 0) as today_revenue', ['paid'])
+                ->first();
+
             return [
                 'tables'         => (int) $tables->total,
                 'occupiedTables' => (int) $tables->occupied,
                 'activeOrders'   => $activeOrders,
+                'todayOrders'    => (int) $todayStats->today_orders,
+                'todayRevenue'   => (int) $todayStats->today_revenue,
             ];
         });
 

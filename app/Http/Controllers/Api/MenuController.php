@@ -11,11 +11,20 @@ use Illuminate\Support\Str;
 
 class MenuController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $restaurantId = $request->user()->restaurant_id;
+
         $categories = Category::with(['menuItems' => function ($q) {
-            $q->where('is_active', true)->orderBy('display_order');
-        }])->orderBy('display_order')->get();
+            $q->where('is_active', true)
+              ->select('id', 'category_id', 'restaurant_id', 'name', 'description', 'price', 'preparation_time', 'is_available', 'display_order')
+              ->orderBy('display_order');
+        }])
+            ->where('restaurant_id', $restaurantId)
+            ->where('is_active', true)
+            ->select('id', 'restaurant_id', 'name', 'slug', 'icon', 'color', 'display_order')
+            ->orderBy('display_order')
+            ->get();
 
         return response()->json($categories);
     }

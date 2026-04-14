@@ -176,7 +176,7 @@ class OrderController extends Controller
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
 
-            broadcast(new NewOrderReceived($order))->toOthers();
+            $this->tryBroadcast(fn () => broadcast(new NewOrderReceived($order))->toOthers());
 
             LogService::log($request, 'order.sent_to_kitchen',
                 "Commande #{$order->order_number} envoyée en cuisine",
@@ -203,7 +203,7 @@ class OrderController extends Controller
                 $order->table->update(['status' => 'free', 'current_order_id' => null]);
             }
 
-            broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers();
+            $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
 
             LogService::log($request, 'order.status_updated',
                 "Commande #{$order->order_number} : {$oldStatus} → {$request->status}",
@@ -216,6 +216,16 @@ class OrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /** Broadcast silencieux — ne casse pas la réponse si Reverb est absent. */
+    private function tryBroadcast(callable $fn): void
+    {
+        try {
+            $fn();
+        } catch (\Throwable) {
+            // Reverb indisponible — le polling frontend compensera
         }
     }
 }

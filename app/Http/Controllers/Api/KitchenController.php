@@ -29,7 +29,7 @@ class KitchenController extends Controller
     public function startCooking(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'cooking']);
-        broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers();
+        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
         return response()->json(['message' => 'Préparation commencée']);
     }
@@ -37,7 +37,7 @@ class KitchenController extends Controller
     public function markReady(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'ready']);
-        broadcast(new OrderItemStatusChanged($item->load('order.table')));
+        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
 
         return response()->json(['message' => 'Plat prêt']);
     }
@@ -45,20 +45,27 @@ class KitchenController extends Controller
     public function markServed(OrderItem $item)
     {
         $item->update(['kitchen_status' => 'served']);
-        broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers();
+        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
         return response()->json(['message' => 'Plat servi']);
     }
 
     public function markOutOfStock(OrderItem $item)
     {
-        // Mark the underlying menu item as unavailable (rupture de stock)
         $item->menuItem()->update(['is_available' => false]);
-
-        // Also remove this item from the kitchen queue (cancel it)
         $item->update(['kitchen_status' => 'served']);
-        broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers();
+        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
         return response()->json(['message' => 'Rupture signalée — plat retiré du menu']);
+    }
+
+    /** Broadcast silencieux — ne casse pas la réponse si Reverb est absent. */
+    private function tryBroadcast(callable $fn): void
+    {
+        try {
+            $fn();
+        } catch (\Throwable) {
+            // Reverb indisponible — le polling frontend compensera
+        }
     }
 }
