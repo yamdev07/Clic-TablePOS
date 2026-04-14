@@ -1,66 +1,235 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Clic&Table — Backend API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+> Laravel 11 REST API powering the Clic&Table restaurant management system.  
+> Sanctum authentication · Reverb WebSocket · Spatie RBAC · PostgreSQL
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Table of Contents
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [API Overview](#api-overview)
+- [Authentication & Roles](#authentication--roles)
+- [WebSocket Broadcasting](#websocket-broadcasting)
+- [Testing](#testing)
+- [Code Style](#code-style)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## Requirements
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+| Dependency | Version |
+|------------|---------|
+| PHP | 8.2+ |
+| Composer | 2.x |
+| PostgreSQL | 15+ (SQLite for local dev) |
+| Redis | Optional (queue/cache in prod) |
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+PHP extensions required: `pdo_pgsql`, `mbstring`, `xml`, `bcmath`, `redis`, `pcntl` (Octane)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## Installation
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+# 1. Dependencies
+composer install
 
-### Premium Partners
+# 2. Environment
+cp .env.example .env
+php artisan key:generate
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+# 3. Database
+php artisan migrate --seed
 
-## Contributing
+# 4. Dev server
+php artisan serve
+# or via Octane
+php artisan octane:start --server=swoole --port=8000
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+# 5. WebSocket (separate process)
+php artisan reverb:start --host=0.0.0.0 --port=8080
 
-## Code of Conduct
+# 6. Queue worker (if using database/redis driver)
+php artisan queue:work
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+---
 
-## Security Vulnerabilities
+## Configuration
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Key `.env` variables:
 
-## License
+```dotenv
+APP_ENV=local
+APP_URL=http://localhost:8000
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=clicettable
+DB_USERNAME=postgres
+DB_PASSWORD=secret
+
+BROADCAST_CONNECTION=reverb
+QUEUE_CONNECTION=database
+CACHE_STORE=database
+
+REVERB_APP_ID=clicettable
+REVERB_APP_KEY=clicettable-key
+REVERB_APP_SECRET=clicettable-secret
+REVERB_HOST=localhost
+REVERB_PORT=8080
+REVERB_SCHEME=http
+```
+
+For local development with SQLite, set `DB_CONNECTION=sqlite` and remove the other `DB_*` vars.
+
+---
+
+## Architecture
+
+```
+app/
+├── Events/                    # Broadcast events
+│   ├── NewOrderReceived.php   # → private-kitchen.{id}
+│   ├── OrderStatusChanged.php # → private-restaurant.{id}
+│   └── OrderItemStatusChanged.php
+├── Http/
+│   ├── Controllers/Api/       # 10 resource controllers
+│   └── Middleware/
+│       └── GzipResponse.php   # Compress payloads > 1 KB
+├── Models/                    # 10 Eloquent models
+│   ├── Restaurant, User
+│   ├── Table, Order, OrderItem
+│   ├── Category, MenuItem
+│   ├── Payment, ActivityLog
+│   └── KitchenDisplay
+└── Services/
+    └── LogService.php         # Unified activity logging
+
+routes/
+├── api.php                    # 40+ REST endpoints
+└── channels.php               # Reverb private channel auth
+```
+
+### Broadcast resilience
+
+All `broadcast()` calls are wrapped in `tryBroadcast()` to ensure API endpoints never fail when Reverb is unavailable:
+
+```php
+private function tryBroadcast(callable $fn): void
+{
+    try { $fn(); } catch (\Throwable) {}
+}
+```
+
+### Response compression
+
+`GzipResponse` middleware automatically compresses JSON responses larger than 1 KB with gzip level 6, reducing payload size by 70–80%.
+
+---
+
+## API Overview
+
+Base path: `/api` — all routes require `Authorization: Bearer <token>` except `/login`.
+
+| Domain | Endpoints |
+|--------|-----------|
+| Auth | `POST /login`, `POST /logout`, `GET /me` |
+| Tables | Full CRUD + `PATCH /tables/{id}/status` |
+| Menu | `GET /menu` (nested), full CRUD on categories & items, `PATCH .../availability` |
+| Orders | Open, add items, send to kitchen, advance status |
+| Kitchen | Read pending items, patch `cooking / ready / serve / rupture` |
+| Payments | `POST /orders/{id}/payments`, `GET /stats/z-report` |
+| Stats | `GET /stats` — cached 15 s via `Cache::remember()` |
+| Users | Admin-only CRUD |
+| Logs | Admin-only activity log |
+
+Full documentation available via Swagger at `/api/documentation` (requires `l5-swagger` artisan publish).
+
+---
+
+## Authentication & Roles
+
+Authentication is handled by **Laravel Sanctum** (token-based, no cookies for API clients).
+
+Four roles managed by **Spatie Laravel Permission**:
+
+| Role | Scope |
+|------|-------|
+| `admin` | Full access |
+| `manager` | Orders, menu, tables, stats |
+| `waiter` | Own tables + order creation |
+| `kitchen` | KDS read + status updates only |
+
+### Channel authorisation
+
+```php
+// routes/channels.php
+Broadcast::channel('restaurant.{id}', fn ($user, $id) =>
+    in_array($user->role, ['admin', 'manager', 'waiter'])
+    && $user->restaurant_id === (int) $id
+);
+
+Broadcast::channel('kitchen.{id}', fn ($user, $id) =>
+    in_array($user->role, ['admin', 'kitchen'])
+    && $user->restaurant_id === (int) $id
+);
+```
+
+---
+
+## WebSocket Broadcasting
+
+Three events broadcast in real time:
+
+| Event | Channel | Payload |
+|-------|---------|---------|
+| `NewOrderReceived` | `private-kitchen.{restaurant_id}` | Full order + items |
+| `OrderItemStatusChanged` | `private-kitchen.{restaurant_id}` | Item id, status, order info |
+| `OrderStatusChanged` | `private-restaurant.{restaurant_id}` | Order id, old/new status |
+
+---
+
+## Testing
+
+```bash
+# Run all tests (parallel)
+php artisan test --parallel
+
+# Run specific suite
+php artisan test --testsuite=Feature
+
+# With coverage
+php artisan test --coverage --min=80
+```
+
+The CI pipeline uses a dedicated PostgreSQL 15 service container. A `.env.testing` is generated automatically in CI:
+
+```dotenv
+DB_CONNECTION=pgsql
+DB_DATABASE=clicettable_test
+QUEUE_CONNECTION=sync
+CACHE_STORE=array
+BROADCAST_CONNECTION=log
+```
+
+---
+
+## Code Style
+
+This project uses **Laravel Pint** (PHP CS Fixer preset):
+
+```bash
+# Check
+./vendor/bin/pint --test
+
+# Fix
+./vendor/bin/pint
+```
+
+Pint runs as a required check in CI — PRs with style violations are blocked.
