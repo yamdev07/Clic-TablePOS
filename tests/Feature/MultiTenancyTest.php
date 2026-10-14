@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\Restaurant;
@@ -147,5 +148,113 @@ class MultiTenancyTest extends TestCase
         // Le restaurant A a 1 table occupée, pas 2
         $this->assertEquals(1, $response->json('tables'));
         $this->assertEquals(1, $response->json('occupiedTables'));
+    }
+
+    // ── Accès par ID aux ressources d'un autre restaurant ─────────────────
+
+    /** @test */
+    public function user_cannot_access_or_modify_another_restaurants_table(): void
+    {
+        Sanctum::actingAs($this->userA);
+        $id = $this->tableB->id;
+
+        $this->getJson("/api/tables/{$id}")->assertNotFound();
+        $this->putJson("/api/tables/{$id}", ['capacity' => 2])->assertNotFound();
+        $this->patchJson("/api/tables/{$id}/status", ['status' => 'free'])->assertNotFound();
+        $this->deleteJson("/api/tables/{$id}")->assertNotFound();
+
+        $this->assertDatabaseHas('tables', ['id' => $id, 'status' => 'occupied']);
+    }
+
+    /** @test */
+    public function user_cannot_access_or_modify_another_restaurants_menu_item(): void
+    {
+        $itemB = MenuItem::factory()->create(['restaurant_id' => $this->restaurantB->id]);
+        Sanctum::actingAs($this->userA);
+
+        $this->getJson("/api/menu/{$itemB->id}")->assertNotFound();
+        $this->putJson("/api/menu/{$itemB->id}", ['price' => 1])->assertNotFound();
+        $this->patchJson("/api/menu/{$itemB->id}/availability")->assertNotFound();
+        $this->deleteJson("/api/menu/{$itemB->id}")->assertNotFound();
+
+        $this->assertDatabaseHas('menu_items', ['id' => $itemB->id, 'price' => $itemB->price]);
+    }
+
+    /** @test */
+    public function user_cannot_modify_another_restaurants_category(): void
+    {
+        $categoryB = Category::create([
+            'id'            => (string) Str::uuid(),
+            'restaurant_id' => $this->restaurantB->id,
+            'name'          => 'Boissons B',
+            'slug'          => 'boissons-b',
+        ]);
+        Sanctum::actingAs($this->userA);
+
+        $this->putJson("/api/categories/{$categoryB->id}", ['name' => 'Hack'])->assertNotFound();
+        $this->deleteJson("/api/categories/{$categoryB->id}")->assertNotFound();
+
+        // Ni rattacher un plat à une catégorie étrangère
+        $this->postJson('/api/menu', [
+            'name' => 'Plat', 'price' => 1000, 'category_id' => $categoryB->id,
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseHas('categories', ['id' => $categoryB->id, 'name' => 'Boissons B']);
+    }
+
+    /** @test */
+    public function admin_cannot_modify_another_restaurants_user(): void
+    {
+        Sanctum::actingAs($this->userA);
+
+        $this->putJson("/api/users/{$this->userB->id}", ['role' => 'waiter'])->assertNotFound();
+        $this->deleteJson("/api/users/{$this->userB->id}")->assertNotFound();
+
+        $this->assertDatabaseHas('users', ['id' => $this->userB->id, 'role' => 'admin', 'is_active' => true]);
+    }
+
+    /** @test */
+    public function kitchen_cannot_change_another_restaurants_order_item(): void
+    {
+        $menuItemB = MenuItem::factory()->create(['restaurant_id' => $this->restaurantB->id]);
+        $itemB = $this->orderB->items()->create([
+            'id'             => (string) Str::uuid(),
+            'menu_item_id'   => $menuItemB->id,
+            'item_name'      => 'Plat B',
+            'quantity'       => 1,
+            'unit_price'     => 1000,
+            'total_price'    => 1000,
+            'kitchen_status' => 'pending',
+        ]);
+        Sanctum::actingAs($this->userA);
+
+        foreach (['cooking', 'ready', 'serve', 'rupture'] as $action) {
+            $this->patchJson("/api/kitchen/items/{$itemB->id}/{$action}")->assertNotFound();
+        }
+
+        $this->assertDatabaseHas('order_items', ['id' => $itemB->id, 'kitchen_status' => 'pending']);
+    }
+
+    /** @test */
+    public function user_cannot_open_order_on_another_restaurants_table(): void
+    {
+        $this->tableB->update(['status' => 'free']);
+        Sanctum::actingAs($this->userA);
+
+        $this->postJson('/api/orders', ['table_id' => $this->tableB->id])->assertUnprocessable();
+
+        $this->assertDatabaseHas('tables', ['id' => $this->tableB->id, 'status' => 'free']);
+    }
+
+    /** @test */
+    public function user_cannot_add_another_restaurants_menu_item_to_order(): void
+    {
+        $itemB = MenuItem::factory()->create(['restaurant_id' => $this->restaurantB->id]);
+        Sanctum::actingAs($this->userA);
+
+        $this->postJson("/api/orders/{$this->orderA->id}/items", ['menu_item_id' => $itemB->id])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseMissing('order_items', ['menu_item_id' => $itemB->id]);
     }
 }

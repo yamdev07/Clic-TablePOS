@@ -4,13 +4,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Order extends Model
 {
-    use HasFactory;
+    use BelongsToRestaurant, HasFactory;
 
     public $incrementing = false;
 
@@ -40,21 +41,6 @@ class Order extends Model
                 $order->order_number = 'ORD-'.date('Ymd').'-'.strtoupper(Str::random(6));
             }
         });
-    }
-
-    /**
-     * Restreindre le route model binding au restaurant de l'utilisateur connecté.
-     * Retourne 404 si l'order appartient à un autre restaurant.
-     */
-    public function resolveRouteBinding($value, $field = null): static
-    {
-        $query = $this->where($field ?? $this->getRouteKeyName(), $value);
-
-        if (auth()->check()) {
-            $query->where('restaurant_id', auth()->user()->restaurant_id);
-        }
-
-        return $query->firstOrFail();
     }
 
     public function restaurant()

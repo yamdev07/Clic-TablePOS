@@ -8,6 +8,7 @@ use App\Models\MenuItem;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class MenuController extends Controller
 {
@@ -39,7 +40,7 @@ class MenuController extends Controller
         $request->validate([
             'name'        => 'required|string',
             'price'       => 'required|integer|min:0',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => ['nullable', $this->ownCategory($request)],
         ]);
 
         $item = MenuItem::create([
@@ -61,6 +62,10 @@ class MenuController extends Controller
 
     public function update(Request $request, MenuItem $item)
     {
+        $request->validate([
+            'category_id' => ['nullable', $this->ownCategory($request)],
+        ]);
+
         $old = $item->only(['name', 'price']);
         $item->update($request->only(['name', 'price', 'category_id', 'description', 'preparation_time']));
 
@@ -80,6 +85,12 @@ class MenuController extends Controller
         $item->delete();
 
         return response()->json(null, 204);
+    }
+
+    /** La catégorie doit appartenir au restaurant de l'utilisateur. */
+    private function ownCategory(Request $request)
+    {
+        return Rule::exists('categories', 'id')->where('restaurant_id', $request->user()->restaurant_id);
     }
 
     public function toggleAvailability(MenuItem $item, Request $request)

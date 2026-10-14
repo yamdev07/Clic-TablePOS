@@ -11,6 +11,7 @@ use App\Models\Table;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
 {
@@ -37,10 +38,13 @@ class OrderController extends Controller
     {
         try {
             $request->validate([
-                'table_id' => 'required|exists:tables,id',
+                'table_id' => [
+                    'required',
+                    Rule::exists('tables', 'id')->where('restaurant_id', $request->user()->restaurant_id),
+                ],
             ]);
 
-            $table = Table::findOrFail($request->table_id);
+            $table = Table::forCurrentRestaurant()->findOrFail($request->table_id);
 
             if ($table->status !== 'free') {
                 return response()->json([
@@ -77,12 +81,15 @@ class OrderController extends Controller
     {
         try {
             $request->validate([
-                'menu_item_id'          => 'required|exists:menu_items,id',
+                'menu_item_id'          => [
+                    'required',
+                    Rule::exists('menu_items', 'id')->where('restaurant_id', $request->user()->restaurant_id),
+                ],
                 'quantity'              => 'integer|min:1',
                 'special_instructions'  => 'nullable|string|max:500',
             ]);
 
-            $menuItem  = MenuItem::findOrFail($request->menu_item_id);
+            $menuItem  = MenuItem::forCurrentRestaurant()->findOrFail($request->menu_item_id);
             $quantity  = $request->quantity ?? 1;
 
             $orderItem = $order->items()->create([
