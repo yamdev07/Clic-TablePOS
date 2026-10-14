@@ -45,7 +45,16 @@ class User extends Authenticatable
             return 'Ce restaurant est suspendu. Contactez le support Clic&Table.';
         }
 
+        if ($this->restaurant?->isTrialExpired()) {
+            return "La période d'essai de ce restaurant est terminée. Contactez le support Clic&Table pour activer votre abonnement.";
+        }
+
         return null;
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
     }
 
     public function orders()
