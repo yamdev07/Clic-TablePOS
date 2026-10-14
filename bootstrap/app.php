@@ -15,6 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(append: [
             \App\Http\Middleware\GzipResponse::class,
         ]);
+
+        $middleware->alias([
+            'active' => \App\Http\Middleware\EnsureAccountIsActive::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

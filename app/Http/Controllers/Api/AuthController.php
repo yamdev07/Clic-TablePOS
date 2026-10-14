@@ -30,6 +30,14 @@ class AuthController extends Controller
                 ], 401);
             }
 
+            if ($reason = $user->accessDenialReason()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $reason,
+                    'code'    => 'account_inactive',
+                ], 403);
+            }
+
             $token = $user->createToken('auth_token')->plainTextToken;
 
             // Log connexion
@@ -56,16 +64,19 @@ class AuthController extends Controller
                     'name'  => $user->name,
                     'email' => $user->email,
                     'role'  => $user->role,
+                    'restaurant_id' => $user->restaurant_id,
                 ],
                 'token' => $token,
             ]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-                'file'    => $e->getFile(),
-                'line'    => $e->getLine(),
+                'message' => 'Erreur serveur lors de la connexion',
             ], 500);
         }
     }

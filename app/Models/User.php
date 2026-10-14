@@ -34,6 +34,20 @@ class User extends Authenticatable
         return $this->belongsTo(Restaurant::class);
     }
 
+    /** Raison pour laquelle ce compte ne peut pas utiliser l'application, ou null s'il le peut. */
+    public function accessDenialReason(): ?string
+    {
+        if (! $this->is_active) {
+            return 'Votre compte a été désactivé. Contactez votre administrateur.';
+        }
+
+        if ($this->restaurant?->status === 'suspended') {
+            return 'Ce restaurant est suspendu. Contactez le support Clic&Table.';
+        }
+
+        return null;
+    }
+
     public function orders()
     {
         return $this->hasMany(Order::class);

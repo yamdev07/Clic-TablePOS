@@ -17,10 +17,11 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 
 // Routes protégées par token
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
+
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
     // Auth
-    Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
     // Tables
