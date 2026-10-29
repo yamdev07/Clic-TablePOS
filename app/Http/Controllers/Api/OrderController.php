@@ -11,16 +11,28 @@ use App\Models\Table;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
+    private function ensureOrderBelongsToRestaurant(
+        Request $request,
+        Order $order
+    ): void {
+        abort_unless(
+            (string) $order->restaurant_id ===
+            (string) $request->user()->restaurant_id,
+            404
+        );
+    }
+
     public function index(Request $request)
     {
         $orders = Order::with([
-                'table:id,number,capacity',
-                'user:id,name,role',
-                'items:id,order_id,menu_item_id,item_name,quantity,unit_price,total_price,kitchen_status',
-            ])
+            'table:id,number,capacity',
+            'user:id,name,role',
+            'items:id,order_id,menu_item_id,item_name,quantity,unit_price,total_price,kitchen_status',
+        ])
             ->where('restaurant_id', $request->user()->restaurant_id)
             ->orderBy('created_at', 'desc')
             ->paginate(30);
@@ -28,8 +40,10 @@ class OrderController extends Controller
         return response()->json($orders);
     }
 
-    public function show(Order $order)
+    public function show(Request $request, Order $order)
     {
+        $this->ensureOrderBelongsToRestaurant($request, $order);
+
         return response()->json($order->load(['table', 'items.menuItem', 'payments']));
     }
 
@@ -39,23 +53,28 @@ class OrderController extends Controller
             $request->validate([
                 'table_id' => 'required|exists:tables,id',
             ]);
-
             $table = Table::findOrFail($request->table_id);
 
+            if ((string) $table->restaurant_id !==
+                (string) $request->user()->restaurant_id) {
+                return response()->json([
+                    'message' => 'Cette table appartient à un autre restaurant.',
+                ], 404);
+            }
             if ($table->status !== 'free') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Table non disponible',
-                    'status'  => $table->status,
+                    'status' => $table->status,
                 ], 422);
             }
 
             $order = Order::create([
-                'id'            => (string) Str::uuid(),
+                'id' => (string) Str::uuid(),
                 'restaurant_id' => $request->user()->restaurant_id,
-                'table_id'      => $table->id,
-                'user_id'       => $request->user()->id,
-                'status'        => 'open',
+                'table_id' => $table->id,
+                'user_id' => $request->user()->id,
+                'status' => 'open',
             ]);
 
             $table->update(['status' => 'occupied', 'current_order_id' => $order->id]);
@@ -66,7 +85,7 @@ class OrderController extends Controller
 
             return response()->json(['success' => true, 'data' => $order->load('items')], 201);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -75,25 +94,33 @@ class OrderController extends Controller
 
     public function addItem(Request $request, Order $order)
     {
+        $this->ensureOrderBelongsToRestaurant($request, $order);
         try {
             $request->validate([
-                'menu_item_id'          => 'required|exists:menu_items,id',
-                'quantity'              => 'integer|min:1',
-                'special_instructions'  => 'nullable|string|max:500',
+                'menu_item_id' => 'required|exists:menu_items,id',
+                'quantity' => 'integer|min:1',
+                'special_instructions' => 'nullable|string|max:500',
             ]);
 
-            $menuItem  = MenuItem::findOrFail($request->menu_item_id);
-            $quantity  = $request->quantity ?? 1;
+            $menuItem = MenuItem::findOrFail($request->menu_item_id);
+
+            if ((string) $menuItem->restaurant_id !==
+                (string) $request->user()->restaurant_id) {
+                return response()->json([
+                    'message' => 'Cet article appartient à un autre restaurant.',
+                ], 404);
+            }
+            $quantity = $request->quantity ?? 1;
 
             $orderItem = $order->items()->create([
-                'id'                    => (string) Str::uuid(),
-                'menu_item_id'          => $menuItem->id,
-                'item_name'             => $menuItem->name,
-                'quantity'              => $quantity,
-                'unit_price'            => $menuItem->price,
-                'total_price'           => $menuItem->price * $quantity,
-                'kitchen_status'        => 'pending',
-                'special_instructions'  => $request->special_instructions,
+                'id' => (string) Str::uuid(),
+                'menu_item_id' => $menuItem->id,
+                'item_name' => $menuItem->name,
+                'quantity' => $quantity,
+                'unit_price' => $menuItem->price,
+                'total_price' => $menuItem->price * $quantity,
+                'kitchen_status' => 'pending',
+                'special_instructions' => $request->special_instructions,
             ]);
 
             $order->recalculate();
@@ -104,15 +131,16 @@ class OrderController extends Controller
 
             return response()->json(['success' => true, 'data' => $orderItem], 201);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    public function removeItem(Order $order, $itemId, Request $request)
+    public function removeItem(Request $request, Order $order, $itemId)
     {
+        $this->ensureOrderBelongsToRestaurant($request, $order);
         try {
             $item = $order->items()->where('id', $itemId)->first();
             $itemName = $item?->item_name ?? 'article';
@@ -131,8 +159,9 @@ class OrderController extends Controller
         }
     }
 
-    public function confirm(Order $order, Request $request)
+    public function confirm(Request $request, Order $order)
     {
+        $this->ensureOrderBelongsToRestaurant($request, $order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
 
@@ -151,8 +180,9 @@ class OrderController extends Controller
         }
     }
 
-    public function cancel(Order $order, Request $request)
+    public function cancel(Request $request, Order $order)
     {
+        $this->ensureOrderBelongsToRestaurant($request, $order);
         try {
             $order->update(['status' => 'cancelled']);
 
@@ -171,8 +201,9 @@ class OrderController extends Controller
         }
     }
 
-    public function sendToKitchen(Order $order, Request $request)
+    public function sendToKitchen(Request $request, Order $order)
     {
+        $this->ensureOrderBelongsToRestaurant($request, $order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
 
@@ -191,6 +222,7 @@ class OrderController extends Controller
 
     public function updateStatus(Request $request, Order $order)
     {
+        $this->ensureOrderBelongsToRestaurant($request, $order);
         try {
             $request->validate([
                 'status' => 'required|in:open,in_progress,ready,served,paid,cancelled',
@@ -212,7 +244,7 @@ class OrderController extends Controller
 
             return response()->json(['success' => true, 'data' => $order]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);

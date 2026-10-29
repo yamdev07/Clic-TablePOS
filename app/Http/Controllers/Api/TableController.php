@@ -10,6 +10,17 @@ use Illuminate\Support\Str;
 
 class TableController extends Controller
 {
+    private function ensureTableBelongsToRestaurant(
+        Request $request,
+        Table $table
+    ): void {
+        abort_unless(
+            (string) $table->restaurant_id ===
+            (string) $request->user()->restaurant_id,
+            404
+        );
+    }
+
     public function index(Request $request)
     {
         return response()->json(
@@ -20,15 +31,17 @@ class TableController extends Controller
         );
     }
 
-    public function show(Table $table)
+    public function show(Request $request, Table $table)
     {
+        $this->ensureTableBelongsToRestaurant($request, $table);
+
         return response()->json($table->load(['currentOrder.items']));
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'number'   => 'required|string',
+            'number' => 'required|string',
             'capacity' => 'integer|min:1|max:20',
         ]);
 
@@ -42,12 +55,12 @@ class TableController extends Controller
         }
 
         $table = Table::create([
-            'id'            => (string) Str::uuid(),
+            'id' => (string) Str::uuid(),
             'restaurant_id' => $request->user()->restaurant_id,
-            'number'        => $request->number,
-            'capacity'      => $request->capacity ?? 4,
-            'status'        => 'free',
-            'qr_code'       => 'https://clicettable.com/t/' . Str::random(8),
+            'number' => $request->number,
+            'capacity' => $request->capacity ?? 4,
+            'status' => 'free',
+            'qr_code' => 'https://clicettable.com/t/'.Str::random(8),
         ]);
 
         LogService::log($request, 'table.created',
@@ -59,6 +72,7 @@ class TableController extends Controller
 
     public function update(Request $request, Table $table)
     {
+        $this->ensureTableBelongsToRestaurant($request, $table);
         $old = $table->only(['number', 'capacity']);
         $table->update($request->only(['number', 'capacity', 'x_position', 'y_position']));
 
@@ -71,6 +85,7 @@ class TableController extends Controller
 
     public function destroy(Table $table, Request $request)
     {
+        $this->ensureTableBelongsToRestaurant($request, $table);
         LogService::log($request, 'table.deleted',
             "Table {$table->number} supprimée",
             'table', $table->id);
@@ -82,6 +97,7 @@ class TableController extends Controller
 
     public function updateStatus(Request $request, Table $table)
     {
+        $this->ensureTableBelongsToRestaurant($request, $table);
         $request->validate([
             'status' => 'required|in:free,occupied,reserved,dirty',
         ]);

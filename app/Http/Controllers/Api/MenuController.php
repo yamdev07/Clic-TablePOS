@@ -8,17 +8,29 @@ use App\Models\MenuItem;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class MenuController extends Controller
 {
+    private function ensureMenuItemBelongsToRestaurant(
+        Request $request,
+        MenuItem $item
+    ): void {
+        abort_unless(
+            (string) $item->restaurant_id ===
+            (string) $request->user()->restaurant_id,
+            404
+        );
+    }
+
     public function index(Request $request)
     {
         $restaurantId = $request->user()->restaurant_id;
 
         $categories = Category::with(['menuItems' => function ($q) {
             $q->where('is_active', true)
-              ->select('id', 'category_id', 'restaurant_id', 'name', 'description', 'price', 'preparation_time', 'is_available', 'display_order')
-              ->orderBy('display_order');
+                ->select('id', 'category_id', 'restaurant_id', 'name', 'description', 'price', 'preparation_time', 'is_available', 'display_order')
+                ->orderBy('display_order');
         }])
             ->where('restaurant_id', $restaurantId)
             ->where('is_active', true)
@@ -29,27 +41,33 @@ class MenuController extends Controller
         return response()->json($categories);
     }
 
-    public function show(MenuItem $item)
+    public function show(Request $request, MenuItem $item)
     {
+        $this->ensureMenuItemBelongsToRestaurant($request, $item);
+
         return response()->json($item->load('category'));
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'name'        => 'required|string',
-            'price'       => 'required|integer|min:0',
-            'category_id' => 'nullable|exists:categories,id',
+            'name' => 'required|string',
+            'price' => 'required|integer|min:0',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')
+                    ->where('restaurant_id', $request->user()->restaurant_id),
+            ],
         ]);
 
         $item = MenuItem::create([
-            'id'            => (string) Str::uuid(),
+            'id' => (string) Str::uuid(),
             'restaurant_id' => $request->user()->restaurant_id,
-            'category_id'   => $request->category_id,
-            'name'          => $request->name,
-            'price'         => $request->price,
-            'is_available'  => true,
-            'is_active'     => true,
+            'category_id' => $request->category_id,
+            'name' => $request->name,
+            'price' => $request->price,
+            'is_available' => true,
+            'is_active' => true,
         ]);
 
         LogService::log($request, 'menu.item_created',
@@ -61,6 +79,15 @@ class MenuController extends Controller
 
     public function update(Request $request, MenuItem $item)
     {
+        $this->ensureMenuItemBelongsToRestaurant($request, $item);
+        $request->validate([
+            'category_id' => [
+                'sometimes',
+                'nullable',
+                Rule::exists('categories', 'id')
+                    ->where('restaurant_id', $request->user()->restaurant_id),
+            ],
+        ]);
         $old = $item->only(['name', 'price']);
         $item->update($request->only(['name', 'price', 'category_id', 'description', 'preparation_time']));
 
@@ -73,6 +100,7 @@ class MenuController extends Controller
 
     public function destroy(MenuItem $item, Request $request)
     {
+        $this->ensureMenuItemBelongsToRestaurant($request, $item);
         LogService::log($request, 'menu.item_deleted',
             "Article \"{$item->name}\" supprimé du menu",
             'menu_item', $item->id);
@@ -84,6 +112,7 @@ class MenuController extends Controller
 
     public function toggleAvailability(MenuItem $item, Request $request)
     {
+        $this->ensureMenuItemBelongsToRestaurant($request, $item);
         $item->update(['is_available' => ! $item->is_available]);
 
         $state = $item->is_available ? 'disponible' : 'indisponible';

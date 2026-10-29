@@ -34,20 +34,20 @@ class UserController extends Controller
         $this->adminOnly($request);
 
         $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
-            'role'     => 'required|in:admin,manager,waiter,kitchen',
+            'role' => 'required|in:admin,manager,waiter,kitchen',
         ]);
 
         $user = User::create([
-            'id'            => (string) Str::uuid(),
+            'id' => (string) Str::uuid(),
             'restaurant_id' => $request->user()->restaurant_id,
-            'name'          => $request->name,
-            'email'         => $request->email,
-            'password'      => Hash::make($request->password),
-            'role'          => $request->role,
-            'is_active'     => true,
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'role' => $request->role,
+            'is_active' => true,
         ]);
 
         LogService::log($request, 'user.created',
@@ -61,14 +61,19 @@ class UserController extends Controller
     {
         $this->adminOnly($request);
 
+        abort_unless(
+            (string) $user->restaurant_id === (string) $request->user()->restaurant_id,
+            404
+        );
+
         $request->validate([
-            'name'      => 'sometimes|string|max:255',
-            'role'      => 'sometimes|in:admin,manager,waiter,kitchen',
+            'name' => 'sometimes|string|max:255',
+            'role' => 'sometimes|in:admin,manager,waiter,kitchen',
             'is_active' => 'sometimes|boolean',
-            'password'  => 'sometimes|string|min:6',
+            'password' => 'sometimes|string|min:6',
         ]);
 
-        $old  = $user->only(['name', 'role', 'is_active']);
+        $old = $user->only(['name', 'role', 'is_active']);
         $data = $request->only(['name', 'role', 'is_active']);
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
@@ -86,6 +91,11 @@ class UserController extends Controller
     public function destroy(User $user, Request $request)
     {
         $this->adminOnly($request);
+
+        abort_unless(
+            (string) $user->restaurant_id === (string) $request->user()->restaurant_id,
+            404
+        );
 
         if ($user->id === $request->user()->id) {
             return response()->json(['message' => 'Impossible de désactiver votre propre compte'], 422);

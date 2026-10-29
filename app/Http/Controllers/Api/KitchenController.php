@@ -6,12 +6,22 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\OrderItemStatusChanged;
 use App\Http\Controllers\Controller;
-use App\Models\MenuItem;
 use App\Models\OrderItem;
 use Illuminate\Http\Request;
 
 class KitchenController extends Controller
 {
+    private function ensureItemBelongsToRestaurant(
+        Request $request,
+        OrderItem $item
+    ): void {
+        abort_unless(
+            (string) $item->order->restaurant_id ===
+            (string) $request->user()->restaurant_id,
+            404
+        );
+    }
+
     public function pendingOrders(Request $request)
     {
         $items = OrderItem::whereHas('order', function ($q) use ($request) {
@@ -26,32 +36,36 @@ class KitchenController extends Controller
         return response()->json($items);
     }
 
-    public function startCooking(OrderItem $item)
+    public function startCooking(Request $request, OrderItem $item)
     {
+        $this->ensureItemBelongsToRestaurant($request, $item);
         $item->update(['kitchen_status' => 'cooking']);
         $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
         return response()->json(['message' => 'Préparation commencée']);
     }
 
-    public function markReady(OrderItem $item)
+    public function markReady(Request $request, OrderItem $item)
     {
+        $this->ensureItemBelongsToRestaurant($request, $item);
         $item->update(['kitchen_status' => 'ready']);
         $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
 
         return response()->json(['message' => 'Plat prêt']);
     }
 
-    public function markServed(OrderItem $item)
+    public function markServed(Request $request, OrderItem $item)
     {
+        $this->ensureItemBelongsToRestaurant($request, $item);
         $item->update(['kitchen_status' => 'served']);
         $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
         return response()->json(['message' => 'Plat servi']);
     }
 
-    public function markOutOfStock(OrderItem $item)
+    public function markOutOfStock(Request $request, OrderItem $item)
     {
+        $this->ensureItemBelongsToRestaurant($request, $item);
         $item->menuItem()->update(['is_available' => false]);
         $item->update(['kitchen_status' => 'served']);
         $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
