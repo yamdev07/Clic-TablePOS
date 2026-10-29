@@ -38,14 +38,14 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('categories',     fn (Blueprint $t) => $t->dropIndexIfExists('categories_restaurant_id_is_active_index'));
-        Schema::table('menu_items',     fn (Blueprint $t) => $t->dropIndexIfExists('menu_items_category_active_index'));
-        Schema::table('menu_items',     fn (Blueprint $t) => $t->dropIndexIfExists('menu_items_restaurant_available_index'));
-        Schema::table('activity_logs',  fn (Blueprint $t) => $t->dropIndexIfExists('activity_logs_restaurant_created_index'));
+        Schema::table('categories', fn (Blueprint $t) => $t->dropIndexIfExists('categories_restaurant_id_is_active_index'));
+        Schema::table('menu_items', fn (Blueprint $t) => $t->dropIndexIfExists('menu_items_category_active_index'));
+        Schema::table('menu_items', fn (Blueprint $t) => $t->dropIndexIfExists('menu_items_restaurant_available_index'));
+        Schema::table('activity_logs', fn (Blueprint $t) => $t->dropIndexIfExists('activity_logs_restaurant_created_index'));
     }
 
     private function indexExists(string $table, string $index): bool
     {
-        return collect(\DB::select("SELECT indexname FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $index]))->isNotEmpty();
+        return Schema::hasIndex($table, $index);
     }
 };
