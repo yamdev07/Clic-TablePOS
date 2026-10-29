@@ -10,6 +10,7 @@ use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
 {
@@ -72,34 +73,44 @@ class AuthController extends Controller
         }
     }
 
-    public function register(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string',
-            'email' => 'required|email|unique:users',
-            'password' => 'required|min:6',
+  public function register(Request $request)
+{
+    $request->validate([
+        'restaurant_name' => 'required|string|max:255',
+        'name'            => 'required|string|max:255',
+        'email'           => 'required|email|unique:users',
+        'password'        => 'required|min:6',
+    ]);
+
+    // Transaction : pas de restaurant sans son admin, ni l'inverse
+    $user = DB::transaction(function () use ($request) {
+        $restaurant = Restaurant::create([
+            'id'       => (string) Str::uuid(),
+            'name'     => $request->restaurant_name,
+            'slug'     => Str::slug($request->restaurant_name).'-'.Str::random(4),
+            'email'    => $request->email,
+            'currency' => 'XOF',
+            'status'   => 'active',
         ]);
 
-        $restaurant = Restaurant::first();
-
-        if (! $restaurant) {
-            return response()->json(['message' => 'Aucun restaurant trouvé'], 400);
-        }
-
-        $user = User::create([
-            'id' => (string) Str::uuid(),
+        return User::create([
+            'id'            => (string) Str::uuid(),
             'restaurant_id' => $restaurant->id,
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => 'waiter',
-            'is_active' => true,
+            'name'          => $request->name,
+            'email'         => $request->email,
+            'password'      => Hash::make($request->password),
+            'role'          => 'admin',
+            'is_active'     => true,
         ]);
+    });
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+    $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json(['user' => $user, 'token' => $token], 201);
-    }
+    return response()->json([
+        'user'  => $user->load('restaurant:id,name'),
+        'token' => $token,
+    ], 201);
+}
 
     public function logout(Request $request)
     {
