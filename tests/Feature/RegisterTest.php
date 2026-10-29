@@ -14,9 +14,10 @@ class RegisterTest extends TestCase
 
     private array $payload = [
         'restaurant_name' => 'Chez Koffi',
-        'name'            => 'Koffi Admin',
-        'email'           => 'koffi@test.com',
-        'password'        => 'secret123',
+        'name' => 'Koffi Admin',
+        'email' => 'koffi@test.com',
+        'password' => 'Secret123',
+        'password_confirmation' => 'Secret123',
     ];
 
     public function test_register_creates_a_new_restaurant_with_an_admin(): void
@@ -82,5 +83,26 @@ class RegisterTest extends TestCase
         $this->postJson('/api/register', $this->payload)->assertStatus(422);
 
         $this->assertSame(1, Restaurant::count());
+    }
+
+    public function test_register_requires_matching_password_confirmation(): void
+    {
+        $this->postJson('/api/register', array_merge($this->payload, [
+            'password_confirmation' => 'Different123',
+        ]))->assertStatus(422)->assertJsonValidationErrors('password');
+
+        $this->assertSame(0, User::count());
+    }
+
+    public function test_register_rejects_weak_passwords(): void
+    {
+        foreach (['Court1', 'toutminuscule1', 'TOUTMAJUSCULE1', 'SansChiffres'] as $weak) {
+            $this->postJson('/api/register', array_merge($this->payload, [
+                'password' => $weak,
+                'password_confirmation' => $weak,
+            ]))->assertStatus(422)->assertJsonValidationErrors('password');
+        }
+
+        $this->assertSame(0, User::count());
     }
 }

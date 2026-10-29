@@ -8,9 +8,10 @@ use App\Models\Restaurant;
 use App\Models\User;
 use App\Services\LogService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -73,44 +74,48 @@ class AuthController extends Controller
         }
     }
 
-  public function register(Request $request)
-{
-    $request->validate([
-        'restaurant_name' => 'required|string|max:255',
-        'name'            => 'required|string|max:255',
-        'email'           => 'required|email|unique:users',
-        'password'        => 'required|min:6',
-    ]);
-
-    // Transaction : pas de restaurant sans son admin, ni l'inverse
-    $user = DB::transaction(function () use ($request) {
-        $restaurant = Restaurant::create([
-            'id'       => (string) Str::uuid(),
-            'name'     => $request->restaurant_name,
-            'slug'     => Str::slug($request->restaurant_name).'-'.Str::random(4),
-            'email'    => $request->email,
-            'currency' => 'XOF',
-            'status'   => 'active',
+    public function register(Request $request)
+    {
+        $validated = $request->validate([
+            'restaurant_name' => 'required|string|max:255',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => [
+                'required',
+                'confirmed',
+                Password::min(8)->mixedCase()->numbers(),
+            ],
         ]);
 
-        return User::create([
-            'id'            => (string) Str::uuid(),
-            'restaurant_id' => $restaurant->id,
-            'name'          => $request->name,
-            'email'         => $request->email,
-            'password'      => Hash::make($request->password),
-            'role'          => 'admin',
-            'is_active'     => true,
-        ]);
-    });
+        $user = DB::transaction(function () use ($validated) {
+            $restaurant = Restaurant::create([
+                'id' => (string) Str::uuid(),
+                'name' => $validated['restaurant_name'],
+                'slug' => Str::slug($validated['restaurant_name'])
+                    .'-'.Str::random(4),
+                'email' => $validated['email'],
+                'currency' => 'XOF',
+                'status' => 'active',
+            ]);
 
-    $token = $user->createToken('auth_token')->plainTextToken;
+            return User::create([
+                'id' => (string) Str::uuid(),
+                'restaurant_id' => $restaurant->id,
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'role' => 'admin',
+                'is_active' => true,
+            ]);
+        });
 
-    return response()->json([
-        'user'  => $user->load('restaurant:id,name'),
-        'token' => $token,
-    ], 201);
-}
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user->load('restaurant:id,name'),
+            'token' => $token,
+        ], 201);
+    }
 
     public function logout(Request $request)
     {
