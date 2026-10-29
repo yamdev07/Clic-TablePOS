@@ -35,16 +35,16 @@ class AuthController extends Controller
             // Log connexion
             ActivityLog::create([
                 'restaurant_id' => $user->restaurant_id,
-                'user_id'       => $user->id,
-                'user_name'     => $user->name,
-                'action'        => 'auth.login',
-                'description'   => "{$user->name} s'est connecté(e)",
-                'entity_type'   => 'user',
-                'entity_id'     => $user->id,
-                'old_values'    => [],
-                'new_values'    => [],
-                'ip_address'    => $request->ip(),
-                'user_agent'    => substr($request->userAgent() ?? '', 0, 255),
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'action' => 'auth.login',
+                'description' => "{$user->name} s'est connecté(e)",
+                'entity_type' => 'user',
+                'entity_id' => $user->id,
+                'old_values' => [],
+                'new_values' => [],
+                'ip_address' => $request->ip(),
+                'user_agent' => substr($request->userAgent() ?? '', 0, 255),
             ]);
 
             $user->update(['last_login_at' => now()]);
@@ -52,10 +52,12 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'user' => [
-                    'id'    => $user->id,
-                    'name'  => $user->name,
+                    'id' => $user->id,
+                    'name' => $user->name,
                     'email' => $user->email,
-                    'role'  => $user->role,
+                    'role' => $user->role,
+                    'restaurant_id' => $user->restaurant_id,
+                    'restaurant' => $user->restaurant?->only(['id', 'name']),
                 ],
                 'token' => $token,
             ]);
@@ -64,8 +66,8 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-                'file'    => $e->getFile(),
-                'line'    => $e->getLine(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ], 500);
         }
     }
@@ -73,8 +75,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $request->validate([
-            'name'     => 'required|string',
-            'email'    => 'required|email|unique:users',
+            'name' => 'required|string',
+            'email' => 'required|email|unique:users',
             'password' => 'required|min:6',
         ]);
 
@@ -85,13 +87,13 @@ class AuthController extends Controller
         }
 
         $user = User::create([
-            'id'            => (string) Str::uuid(),
+            'id' => (string) Str::uuid(),
             'restaurant_id' => $restaurant->id,
-            'name'          => $request->name,
-            'email'         => $request->email,
-            'password'      => Hash::make($request->password),
-            'role'          => 'waiter',
-            'is_active'     => true,
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'role' => 'waiter',
+            'is_active' => true,
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -112,6 +114,6 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
-        return response()->json($request->user());
+        return response()->json($request->user()->load('restaurant:id,name'));
     }
 }

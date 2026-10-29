@@ -320,4 +320,23 @@ class TenantIsolationTest extends TestCase
         // Un 422 révélerait que cette catégorie existe et contient des plats
         $this->deleteJson("/api/categories/{$categoryB->id}")->assertNotFound();
     }
+
+    public function test_me_returns_own_restaurant(): void
+    {
+        $this->getJson('/api/me')
+            ->assertOk()
+            ->assertJsonPath('restaurant.id', $this->restaurantA->id)
+            ->assertJsonPath('restaurant.name', $this->restaurantA->name);
+    }
+
+    public function test_login_returns_own_restaurant(): void
+    {
+        $this->postJson('/api/login', [
+            'email' => $this->adminA->email,
+            'password' => 'password',
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.restaurant_id', $this->restaurantA->id)
+            ->assertJsonPath('user.restaurant.name', $this->restaurantA->name);
+    }
 }
