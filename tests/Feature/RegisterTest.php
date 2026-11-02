@@ -105,4 +105,10 @@ class RegisterTest extends TestCase
 
         $this->assertSame(0, User::count());
     }
+    public function test_new_restaurant_uses_benin_timezone(): void
+{
+    $this->postJson('/api/register', $this->payload)->assertCreated();
+
+    $this->assertSame('Africa/Porto-Novo', Restaurant::firstOrFail()->timezone);
+}
 }
