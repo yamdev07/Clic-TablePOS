@@ -52,6 +52,7 @@ class OrderController extends Controller
         try {
             $request->validate([
                 'table_id' => 'required|exists:tables,id',
+                'guest_count' => 'nullable|integer|min:1|max:99',
             ]);
             $table = Table::findOrFail($request->table_id);
 
@@ -75,6 +76,7 @@ class OrderController extends Controller
                 'table_id' => $table->id,
                 'user_id' => $request->user()->id,
                 'status' => 'open',
+                'guest_count' => $request->guest_count,
             ]);
 
             $table->update(['status' => 'occupied', 'current_order_id' => $order->id]);

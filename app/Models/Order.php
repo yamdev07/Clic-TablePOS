@@ -17,7 +17,7 @@ class Order extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'restaurant_id', 'table_id', 'user_id', 'order_number', 'status', 'type',
+        'id', 'restaurant_id', 'table_id', 'user_id', 'order_number', 'status', 'type', 'guest_count',
         'subtotal', 'tax', 'service_charge', 'discount', 'total',
         'paid_amount', 'due_amount', 'notes', 'metadata',
         'confirmed_at', 'completed_at',

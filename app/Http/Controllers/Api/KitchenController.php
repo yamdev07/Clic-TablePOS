@@ -48,7 +48,7 @@ class KitchenController extends Controller
     public function markReady(Request $request, OrderItem $item)
     {
         $this->ensureItemBelongsToRestaurant($request, $item);
-        $item->update(['kitchen_status' => 'ready']);
+       $item->update(['kitchen_status' => 'ready', 'ready_at' => $item->ready_at ?? now()]);
         $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
 
         return response()->json(['message' => 'Plat prêt']);

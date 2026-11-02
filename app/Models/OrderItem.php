@@ -19,9 +19,11 @@ class OrderItem extends Model
     protected $fillable = [
         'id', 'order_id', 'menu_item_id', 'item_name', 'item_description',
         'quantity', 'unit_price', 'total_price', 'kitchen_status',
-        'special_instructions', 'modifiers',
+        'special_instructions', 'modifiers','ready_at',
     ];
-
+    protected $casts = [
+    'ready_at' => 'datetime',
+];
     protected static function boot()
     {
         parent::boot();
@@ -48,10 +50,10 @@ class OrderItem extends Model
         $this->update(['kitchen_status' => 'cooking']);
     }
 
-    public function markAsReady()
-    {
-        $this->update(['kitchen_status' => 'ready']);
-    }
+   public function markAsReady()
+{
+    $this->update(['kitchen_status' => 'ready', 'ready_at' => $this->ready_at ?? now()]);
+}
 
     public function markAsServed()
     {
