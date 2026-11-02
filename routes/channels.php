@@ -18,11 +18,15 @@ use Illuminate\Support\Facades\Broadcast;
 */
 
 Broadcast::channel('restaurant.{restaurantId}', function ($user, string $restaurantId) {
-    return $user->restaurant_id === $restaurantId
+    return $user->restaurant_id == $restaurantId
         && in_array($user->role, ['admin', 'manager', 'waiter']);
 });
 
 Broadcast::channel('kitchen.{restaurantId}', function ($user, string $restaurantId) {
-    return $user->restaurant_id === $restaurantId
+    return $user->restaurant_id == $restaurantId
         && in_array($user->role, ['admin', 'kitchen']);
+});
+Broadcast::channel('dashboard.{restaurantId}', function ($user, string $restaurantId) {
+    return $user->restaurant_id == $restaurantId
+        && in_array($user->role, ['admin', 'manager']);
 });

@@ -285,14 +285,7 @@ class DashboardController extends Controller
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get(['id', 'action', 'description', 'user_name', 'entity_type', 'created_at'])
-            ->map(fn ($log) => [
-                'id' => $log->id,
-                'action' => $log->action,
-                'description' => $log->description,
-                'user_name' => $log->user_name,
-                'entity_type' => $log->entity_type,
-                'created_at' => $log->created_at?->toIso8601String(),
-            ])
+            ->map(fn ($log) => $log->toFeedEntry())
             ->all();
     }
 

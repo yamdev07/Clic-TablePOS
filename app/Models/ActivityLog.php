@@ -4,6 +4,7 @@
 
 namespace App\Models;
 
+use App\Events\DashboardActivity;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -37,6 +38,28 @@ class ActivityLog extends Model
                 $log->id = (string) Str::uuid();
             }
         });
+
+        // Diffuse chaque nouvelle ligne au tableau de bord. Un échec ne doit jamais bloquer le journal
+        static::created(function ($log) {
+            try {
+                broadcast(new DashboardActivity($log->restaurant_id, $log->toFeedEntry()));
+            } catch (\Throwable) {
+                // Reverb indisponible : le frontend se rafraîchira à l'actualisation suivante
+            }
+        });
+    }
+
+    /** Les seuls champs du journal exposés au tableau de bord (jamais l'IP ni le navigateur). */
+    public function toFeedEntry(): array
+    {
+        return [
+            'id' => $this->id,
+            'action' => $this->action,
+            'description' => $this->description,
+            'user_name' => $this->user_name,
+            'entity_type' => $this->entity_type,
+            'created_at' => $this->created_at?->toIso8601String(),
+        ];
     }
 
     public function restaurant()
