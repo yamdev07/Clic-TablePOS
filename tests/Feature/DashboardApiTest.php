@@ -354,7 +354,8 @@ class DashboardApiTest extends TestCase
             ->assertJsonPath('sales.trend', null)
             ->assertJsonPath('service', ['avg_wait_minutes' => null, 'ready_under_15_pct' => null])
             ->assertJsonPath('best_sellers', [])
-            ->assertJsonPath('activity', []);
+            ->assertJsonPath('activity', [])
+            ->assertJsonPath('recent_orders', []);
     }
 
     // ── Graphique des ventes ──
@@ -560,5 +561,69 @@ class DashboardApiTest extends TestCase
                 array_keys($event)
             );
         }
+    }
+    // ── Commandes récentes ──
+
+    public function test_recent_orders_list_the_five_latest_orders_of_the_restaurant(): void
+    {
+        $table = Table::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'number' => '7',
+            'status' => 'occupied',
+        ]);
+        $waiter = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'waiter',
+            'name' => 'Jean Serveur',
+        ]);
+
+        foreach (range(1, 6) as $i) {
+            Order::factory()->create([
+                'restaurant_id' => $this->restaurant->id,
+                'table_id' => $table->id,
+                'user_id' => $waiter->id,
+                'order_number' => "ORD-TEST-$i",
+                'status' => $i === 6 ? 'cancelled' : 'served',
+                'total' => 1000 * $i,
+                'created_at' => $this->at(sprintf('2026-11-04 08:%02d:00', $i)),
+            ]);
+        }
+
+        // Une commande plus récente d'un autre restaurant : ne doit jamais apparaître
+        $this->orderFor($this->otherRestaurant(), 'paid', '2026-11-04 11:00:00', ['order_number' => 'ORD-AUTRE']);
+
+        $this->loginAdmin();
+
+        $recent = $this->getJson('/api/dashboard')->assertOk()->json('recent_orders');
+
+        $this->assertCount(5, $recent);
+        $this->assertSame(
+            ['ORD-TEST-6', 'ORD-TEST-5', 'ORD-TEST-4', 'ORD-TEST-3', 'ORD-TEST-2'],
+            array_column($recent, 'order_number')
+        );
+
+        // La plus récente est une commande annulée : elle reste visible
+        $this->assertSame('cancelled', $recent[0]['status']);
+        $this->assertSame(6000, $recent[0]['total']);
+        $this->assertSame('7', $recent[0]['table_number']);
+        $this->assertSame('Jean Serveur', $recent[0]['server_name']);
+
+        foreach ($recent as $order) {
+            $this->assertSame(
+                ['id', 'order_number', 'table_number', 'server_name', 'total', 'status', 'created_at'],
+                array_keys($order)
+            );
+        }
+    }
+
+    public function test_recent_orders_are_not_limited_to_today(): void
+    {
+        $this->orderFor($this->restaurant, 'paid', '2026-10-20 12:00:00', ['order_number' => 'ORD-ANCIENNE']);
+
+        $this->loginAdmin();
+
+        $numbers = array_column($this->getJson('/api/dashboard')->assertOk()->json('recent_orders'), 'order_number');
+
+        $this->assertSame(['ORD-ANCIENNE'], $numbers);
     }
 }

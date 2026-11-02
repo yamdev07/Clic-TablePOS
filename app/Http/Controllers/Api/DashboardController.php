@@ -49,7 +49,27 @@ class DashboardController extends Controller
             'service' => $this->service($restaurantId, $today),
             'best_sellers' => $this->bestSellers($restaurantId, $today),
             'activity' => $this->activity($restaurantId),
+            'recent_orders' => $this->recentOrders($restaurantId),
         ]);
+    }
+
+    private function recentOrders(string $restaurantId): array
+    {
+        return Order::where('restaurant_id', $restaurantId)
+            ->with(['table:id,number', 'user:id,name'])
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get(['id', 'order_number', 'table_id', 'user_id', 'status', 'total', 'created_at'])
+            ->map(fn ($order) => [
+                'id' => $order->id,
+                'order_number' => $order->order_number,
+                'table_number' => $order->table?->number,
+                'server_name' => $order->user?->name,
+                'total' => (int) $order->total,
+                'status' => $order->status,
+                'created_at' => $order->created_at?->toIso8601String(),
+            ])
+            ->all();
     }
 
     private function tables(string $restaurantId): array
@@ -218,7 +238,7 @@ class DashboardController extends Controller
 
         return [
             'avg_wait_minutes' => (int) round($waits->avg()),
-            'ready_under_15_pct' => (float) round($fast / $waits->count() * 100, 1),
+            'ready_under_15_pct' => round($fast / $waits->count() * 100, 1),
         ];
     }
 
