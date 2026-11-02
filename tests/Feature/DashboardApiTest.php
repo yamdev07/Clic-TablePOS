@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
+use App\Models\MenuItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -95,6 +99,59 @@ class DashboardApiTest extends TestCase
             'status' => $status,
             'created_at' => $this->at($atUtc),
         ]);
+    }
+
+    private function otherRestaurant(): Restaurant
+    {
+        return Restaurant::factory()->create(['timezone' => 'Africa/Porto-Novo']);
+    }
+
+    private function dish(Restaurant $restaurant, string $name): MenuItem
+    {
+        return MenuItem::factory()->create(['restaurant_id' => $restaurant->id, 'name' => $name]);
+    }
+
+    private function line(Order $order, MenuItem $dish, int $quantity, int $unitPrice = 1000, array $attrs = []): OrderItem
+    {
+        return OrderItem::create(array_merge([
+            'id' => (string) Str::uuid(),
+            'order_id' => $order->id,
+            'menu_item_id' => $dish->id,
+            'item_name' => $dish->name,
+            'quantity' => $quantity,
+            'unit_price' => $unitPrice,
+            'total_price' => $unitPrice * $quantity,
+            'kitchen_status' => 'pending',
+        ], $attrs));
+    }
+
+    private function confirmedOrder(Restaurant $restaurant, string $confirmedAtUtc): Order
+    {
+        return $this->orderFor($restaurant, 'in_progress', $confirmedAtUtc, [
+            'confirmed_at' => $this->at($confirmedAtUtc),
+        ]);
+    }
+
+    private function log(Restaurant $restaurant, string $description, string $atUtc): ActivityLog
+    {
+        $log = new ActivityLog([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $restaurant->id,
+            'user_id' => $this->admin->id,
+            'user_name' => 'Admin',
+            'action' => 'order.created',
+            'description' => $description,
+            'entity_type' => 'order',
+            'entity_id' => (string) Str::uuid(),
+            'old_values' => [],
+            'new_values' => [],
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'phpunit',
+        ]);
+        $log->created_at = $this->at($atUtc);
+        $log->save();
+
+        return $log;
     }
 
     // ── Accès et validation ──
@@ -283,5 +340,225 @@ class DashboardApiTest extends TestCase
 
         $response->assertJsonPath('cards.covers.today', 6);
         $this->assertEquals(100.0, $response->json('cards.covers.change_pct'));
+    }
+    // ── Restaurant vide : graphique, service, ventes, flux ──
+
+    public function test_empty_restaurant_returns_empty_details(): void
+    {
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')
+            ->assertOk()
+            ->assertJsonPath('sales.values', [0, 0, 0, null, null, null, null])
+            ->assertJsonPath('sales.average', 0)
+            ->assertJsonPath('sales.trend', null)
+            ->assertJsonPath('service', ['avg_wait_minutes' => null, 'ready_under_15_pct' => null])
+            ->assertJsonPath('best_sellers', [])
+            ->assertJsonPath('activity', []);
+    }
+
+    // ── Graphique des ventes ──
+
+    public function test_week_sales_group_payments_by_local_day(): void
+    {
+        $this->payment($this->restaurant, 1000, '2026-11-02 12:00:00');                // lundi
+        $this->payment($this->restaurant, 500, '2026-11-01 23:30:00');                 // lundi 00:30 locale
+        $this->payment($this->restaurant, 1500, '2026-11-03 12:00:00');                // mardi
+        $this->payment($this->restaurant, 3000, '2026-11-04 08:00:00');                // mercredi
+        $this->payment($this->restaurant, 9999, '2026-11-04 09:00:00', 'failed');      // échoué : ignoré
+        $this->payment($this->restaurant, 8888, '2026-11-01 12:00:00');                // dimanche précédent : hors semaine
+        $this->payment($this->otherRestaurant(), 7777, '2026-11-04 08:00:00');         // autre restaurant : ignoré
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard?period=week')
+            ->assertOk()
+            ->assertJsonPath('sales.labels', ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'])
+            ->assertJsonPath('sales.values', [1500, 1500, 3000, null, null, null, null])
+            ->assertJsonPath('sales.average', 2000);
+    }
+
+    public function test_month_sales_have_one_value_per_day(): void
+    {
+        $this->payment($this->restaurant, 1000, '2026-11-02 12:00:00');
+        $this->payment($this->restaurant, 3000, '2026-11-04 08:00:00');
+        $this->payment($this->restaurant, 6666, '2026-10-31 12:00:00');   // mois précédent : ignoré
+
+        $this->loginAdmin();
+
+        $response = $this->getJson('/api/dashboard?period=month')->assertOk();
+
+        $labels = $response->json('sales.labels');
+        $values = $response->json('sales.values');
+
+        $this->assertCount(30, $labels);
+        $this->assertSame('1', $labels[0]);
+        $this->assertSame('30', $labels[29]);
+        $this->assertSame([0, 1000, 0, 3000], array_slice($values, 0, 4));
+        $this->assertNull($values[4]);
+        $this->assertNull($values[29]);
+        $response->assertJsonPath('sales.average', 1000);
+    }
+
+    public function test_trend_is_up_when_revenue_grows(): void
+    {
+        $this->payment($this->restaurant, 6000, '2026-11-03 12:00:00');    // mardi, cette semaine
+        $this->payment($this->restaurant, 3000, '2026-10-27 12:00:00');    // mardi précédent
+        $this->payment($this->restaurant, 99999, '2026-10-30 12:00:00');   // vendredi précédent : hors comparaison
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('sales.trend', 'up');
+    }
+
+    public function test_trend_is_down_when_revenue_drops(): void
+    {
+        $this->payment($this->restaurant, 6000, '2026-11-03 12:00:00');
+        $this->payment($this->restaurant, 12000, '2026-10-27 12:00:00');
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('sales.trend', 'down');
+    }
+
+    public function test_trend_is_stable_within_five_percent(): void
+    {
+        $this->payment($this->restaurant, 6000, '2026-11-03 12:00:00');
+        $this->payment($this->restaurant, 5800, '2026-10-27 12:00:00');   // +3,4 %
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('sales.trend', 'stable');
+    }
+
+    public function test_trend_is_null_without_previous_revenue(): void
+    {
+        $this->payment($this->restaurant, 6000, '2026-11-03 12:00:00');
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('sales.trend', null);
+    }
+
+    // ── Temps de service ──
+
+    public function test_service_time_is_computed_from_confirmation_to_ready(): void
+    {
+        $dish = $this->dish($this->restaurant, 'Poulet DG');
+        $order = $this->confirmedOrder($this->restaurant, '2026-11-04 08:00:00');
+
+        $this->line($order, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:10:00')]);   // 10 min
+        $this->line($order, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:15:00')]);   // 15 min : limite incluse
+        $this->line($order, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:20:00')]);   // 20 min
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')
+            ->assertOk()
+            ->assertJsonPath('service.avg_wait_minutes', 15)
+            ->assertJsonPath('service.ready_under_15_pct', 66.7);
+    }
+
+    public function test_service_time_ignores_unrelated_items(): void
+    {
+        $dish = $this->dish($this->restaurant, 'Poulet DG');
+
+        $valid = $this->confirmedOrder($this->restaurant, '2026-11-04 08:00:00');
+        $this->line($valid, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:10:00')]);   // 10 min : le seul retenu
+
+        // prêt hier : ignoré
+        $yesterday = $this->confirmedOrder($this->restaurant, '2026-11-03 08:00:00');
+        $this->line($yesterday, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-03 09:00:00')]);
+
+        // commande jamais envoyée en cuisine : ignorée
+        $unconfirmed = $this->orderFor($this->restaurant, 'open', '2026-11-04 08:00:00');
+        $this->line($unconfirmed, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 09:00:00')]);
+
+        // autre restaurant : ignoré
+        $other = $this->otherRestaurant();
+        $otherOrder = $this->confirmedOrder($other, '2026-11-04 08:00:00');
+        $this->line($otherOrder, $this->dish($other, 'Autre'), 1, 1000, ['ready_at' => $this->at('2026-11-04 10:00:00')]);
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')
+            ->assertOk()
+            ->assertJsonPath('service.avg_wait_minutes', 10)
+            ->assertJsonPath('service.ready_under_15_pct', 100);
+    }
+
+    // ── Meilleures ventes ──
+
+    public function test_best_sellers_rank_dishes_by_quantity_then_revenue(): void
+    {
+        $thieb = $this->dish($this->restaurant, 'Thiéboudienne');
+        $poulet = $this->dish($this->restaurant, 'Poulet DG');
+        $coca = $this->dish($this->restaurant, 'Coca');
+
+        $paid = $this->orderFor($this->restaurant, 'paid', '2026-11-04 08:00:00');
+        $open = $this->orderFor($this->restaurant, 'open', '2026-11-04 09:00:00');
+
+        $this->line($paid, $thieb, 2, 7000);
+        $this->line($open, $thieb, 3, 7000);    // 5 au total : 35 000
+        $this->line($paid, $poulet, 4, 6000);   // 4 : 24 000
+        $this->line($open, $coca, 4, 1000);     // 4 : 4 000 (même quantité, moins de recettes)
+
+        // Ignorés : commande annulée, commande d'hier, autre restaurant
+        $this->line($this->orderFor($this->restaurant, 'cancelled', '2026-11-04 08:00:00'), $coca, 50);
+        $this->line($this->orderFor($this->restaurant, 'paid', '2026-11-03 12:00:00'), $coca, 50);
+        $other = $this->otherRestaurant();
+        $this->line($this->orderFor($other, 'paid', '2026-11-04 08:00:00'), $this->dish($other, 'Autre'), 99);
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')
+            ->assertOk()
+            ->assertJsonPath('best_sellers', [
+                ['menu_item_id' => $thieb->id, 'name' => 'Thiéboudienne', 'quantity' => 5, 'revenue' => 35000],
+                ['menu_item_id' => $poulet->id, 'name' => 'Poulet DG', 'quantity' => 4, 'revenue' => 24000],
+                ['menu_item_id' => $coca->id, 'name' => 'Coca', 'quantity' => 4, 'revenue' => 4000],
+            ]);
+    }
+
+    public function test_best_sellers_are_limited_to_five(): void
+    {
+        $order = $this->orderFor($this->restaurant, 'paid', '2026-11-04 08:00:00');
+
+        foreach (range(1, 6) as $quantity) {
+            $this->line($order, $this->dish($this->restaurant, "Plat $quantity"), $quantity);
+        }
+
+        $this->loginAdmin();
+
+        $names = array_column($this->getJson('/api/dashboard')->assertOk()->json('best_sellers'), 'name');
+
+        $this->assertSame(['Plat 6', 'Plat 5', 'Plat 4', 'Plat 3', 'Plat 2'], $names);
+    }
+
+    // ── Flux d'activité ──
+
+    public function test_activity_feed_returns_the_ten_latest_events_of_the_restaurant(): void
+    {
+        foreach (range(1, 12) as $i) {
+            $this->log($this->restaurant, "Événement $i", sprintf('2026-11-04 08:%02d:00', $i));
+        }
+        $this->log($this->otherRestaurant(), 'Événement autre restaurant', '2026-11-04 11:00:00');
+
+        $this->loginAdmin();
+
+        $activity = $this->getJson('/api/dashboard')->assertOk()->json('activity');
+
+        $this->assertCount(10, $activity);
+        $this->assertSame('Événement 12', $activity[0]['description']);
+        $this->assertSame('Événement 3', $activity[9]['description']);
+        $this->assertNotContains('Événement autre restaurant', array_column($activity, 'description'));
+
+        // Pas d'IP, ni de navigateur, ni d'anciennes valeurs
+        foreach ($activity as $event) {
+            $this->assertSame(
+                ['id', 'action', 'description', 'user_name', 'entity_type', 'created_at'],
+                array_keys($event)
+            );
+        }
     }
 }

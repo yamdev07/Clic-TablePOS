@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Table;
 use Carbon\Carbon;
@@ -11,6 +13,8 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+    private const SERVICE_THRESHOLD_MINUTES = 15;
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -41,6 +45,10 @@ class DashboardController extends Controller
                 'orders' => $this->orders($restaurantId, $today),
                 'covers' => $this->covers($restaurantId, $today, $yesterday),
             ],
+            'sales' => $this->sales($restaurantId, $period, $now),
+            'service' => $this->service($restaurantId, $today),
+            'best_sellers' => $this->bestSellers($restaurantId, $today),
+            'activity' => $this->activity($restaurantId),
         ]);
     }
 
@@ -131,5 +139,135 @@ class DashboardController extends Controller
             $range[0]->copy()->setTimezone($dbTimezone),
             $range[1]->copy()->setTimezone($dbTimezone),
         ];
+    }
+
+    private function sales(string $restaurantId, string $period, Carbon $now): array
+    {
+        if ($period === 'week') {
+            $start = $now->copy()->startOfWeek(Carbon::MONDAY)->startOfDay();
+            $previousStart = $start->copy()->subWeek();
+            $daysInPeriod = 7;
+            $elapsed = $now->isoWeekday();
+            $labels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+            $comparableDays = $elapsed;
+        } else {
+            $start = $now->copy()->startOfMonth();
+            $previousStart = $start->copy()->subMonthNoOverflow()->startOfMonth();
+            $daysInPeriod = $now->daysInMonth;
+            $elapsed = $now->day;
+            $labels = array_map('strval', range(1, $daysInPeriod));
+            $comparableDays = min($elapsed, $previousStart->daysInMonth);
+        }
+
+        // Une seule requête couvre la période précédente et la période en cours
+        $payments = Payment::where('status', 'completed')
+            ->whereBetween('created_at', $this->toDbRange([$previousStart, $now->copy()->endOfDay()]))
+            ->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId))
+            ->get(['amount', 'created_at']);
+
+        $perDay = [];
+        foreach ($payments as $payment) {
+            $day = $payment->created_at->copy()->setTimezone($now->getTimezone())->toDateString();
+            $perDay[$day] = ($perDay[$day] ?? 0) + $payment->amount;
+        }
+
+        $values = [];
+        $total = 0;
+        for ($i = 0; $i < $daysInPeriod; $i++) {
+            if ($i >= $elapsed) {
+                $values[] = null;   // jour à venir
+
+                continue;
+            }
+            $amount = $perDay[$start->copy()->addDays($i)->toDateString()] ?? 0;
+            $values[] = $amount;
+            $total += $amount;
+        }
+
+        $previousTotal = 0;
+        for ($i = 0; $i < $comparableDays; $i++) {
+            $previousTotal += $perDay[$previousStart->copy()->addDays($i)->toDateString()] ?? 0;
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => $values,
+            'average' => (int) round($total / max($elapsed, 1)),
+            'trend' => $this->trend($total, $previousTotal),
+        ];
+    }
+
+    private function service(string $restaurantId, array $today): array
+    {
+        $items = OrderItem::whereNotNull('ready_at')
+            ->whereBetween('ready_at', $this->toDbRange($today))
+            ->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId)->whereNotNull('confirmed_at'))
+            ->with('order:id,confirmed_at')
+            ->get(['id', 'order_id', 'ready_at']);
+
+        if ($items->isEmpty()) {
+            return ['avg_wait_minutes' => null, 'ready_under_15_pct' => null];
+        }
+
+        $waits = $items->map(fn ($item) => max(
+            0,
+            $item->ready_at->getTimestamp() - $item->order->confirmed_at->getTimestamp()
+        ) / 60);
+
+        $fast = $waits->filter(fn ($minutes) => $minutes <= self::SERVICE_THRESHOLD_MINUTES)->count();
+
+        return [
+            'avg_wait_minutes' => (int) round($waits->avg()),
+            'ready_under_15_pct' => (float) round($fast / $waits->count() * 100, 1),
+        ];
+    }
+
+    private function bestSellers(string $restaurantId, array $today): array
+    {
+        $items = OrderItem::whereHas('order', fn ($q) => $q
+            ->where('restaurant_id', $restaurantId)
+            ->where('status', '!=', 'cancelled')
+            ->whereBetween('created_at', $this->toDbRange($today)))
+            ->get(['menu_item_id', 'item_name', 'quantity', 'total_price']);
+
+        return $items->groupBy('menu_item_id')
+            ->map(fn ($group, $menuItemId) => [
+                'menu_item_id' => $menuItemId,
+                'name' => $group->first()->item_name,
+                'quantity' => (int) $group->sum('quantity'),
+                'revenue' => (int) $group->sum('total_price'),
+            ])
+            ->sortBy([['quantity', 'desc'], ['revenue', 'desc'], ['name', 'asc']])
+            ->take(5)
+            ->values()
+            ->all();
+    }
+
+    private function activity(string $restaurantId): array
+    {
+        return ActivityLog::where('restaurant_id', $restaurantId)
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get(['id', 'action', 'description', 'user_name', 'entity_type', 'created_at'])
+            ->map(fn ($log) => [
+                'id' => $log->id,
+                'action' => $log->action,
+                'description' => $log->description,
+                'user_name' => $log->user_name,
+                'entity_type' => $log->entity_type,
+                'created_at' => $log->created_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    private function trend(int $current, int $previous): ?string
+    {
+        if ($previous <= 0) {
+            return null;
+        }
+
+        $change = ($current - $previous) / $previous * 100;
+
+        return $change > 5 ? 'up' : ($change < -5 ? 'down' : 'stable');
     }
 }

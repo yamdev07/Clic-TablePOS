@@ -39,10 +39,10 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('orders',        fn($t) => $t->dropIndex(['user_id']));
-        Schema::table('order_items',   fn($t) => $t->dropIndex(['menu_item_id']));
-        Schema::table('tables',        fn($t) => $t->dropIndex(['current_order_id']));
-        Schema::table('payments',      fn($t) => $t->dropIndex(['user_id']));
-        Schema::table('activity_logs', fn($t) => $t->dropIndex(['user_id']));
+        Schema::table('orders', fn ($t) => $t->dropIndex(['user_id']));
+        Schema::table('order_items', fn ($t) => $t->dropIndex(['menu_item_id']));
+        Schema::table('tables', fn ($t) => $t->dropIndex(['current_order_id']));
+        Schema::table('payments', fn ($t) => $t->dropIndex(['user_id']));
+        Schema::table('activity_logs', fn ($t) => $t->dropIndex(['user_id']));
     }
 };
