@@ -490,23 +490,24 @@ class DashboardApiTest extends TestCase
 
     // ── Meilleures ventes ──
 
-    public function test_best_sellers_rank_dishes_by_quantity_then_revenue(): void
+    public function test_best_sellers_rank_dishes_over_the_last_30_days(): void
     {
         $thieb = $this->dish($this->restaurant, 'Thiéboudienne');
         $poulet = $this->dish($this->restaurant, 'Poulet DG');
         $coca = $this->dish($this->restaurant, 'Coca');
 
-        $paid = $this->orderFor($this->restaurant, 'paid', '2026-11-04 08:00:00');
+        $today = $this->orderFor($this->restaurant, 'paid', '2026-11-04 08:00:00');
         $open = $this->orderFor($this->restaurant, 'open', '2026-11-04 09:00:00');
+        $lastWeek = $this->orderFor($this->restaurant, 'paid', '2026-10-28 12:00:00');
 
-        $this->line($paid, $thieb, 2, 7000);
-        $this->line($open, $thieb, 3, 7000);    // 5 au total : 35 000
-        $this->line($paid, $poulet, 4, 6000);   // 4 : 24 000
-        $this->line($open, $coca, 4, 1000);     // 4 : 4 000 (même quantité, moins de recettes)
+        $this->line($today, $thieb, 2, 7000);
+        $this->line($lastWeek, $thieb, 3, 7000);   // 5 au total : 35 000
+        $this->line($today, $poulet, 4, 6000);     // 4 : 24 000
+        $this->line($open, $coca, 4, 1000);        // 4 : 4 000 (même quantité, moins de recettes)
 
-        // Ignorés : commande annulée, commande d'hier, autre restaurant
+        // Ignorés : commande annulée, commande de plus de 30 jours, autre restaurant
         $this->line($this->orderFor($this->restaurant, 'cancelled', '2026-11-04 08:00:00'), $coca, 50);
-        $this->line($this->orderFor($this->restaurant, 'paid', '2026-11-03 12:00:00'), $coca, 50);
+        $this->line($this->orderFor($this->restaurant, 'paid', '2026-10-05 12:00:00'), $coca, 50);
         $other = $this->otherRestaurant();
         $this->line($this->orderFor($other, 'paid', '2026-11-04 08:00:00'), $this->dish($other, 'Autre'), 99);
 
@@ -515,9 +516,9 @@ class DashboardApiTest extends TestCase
         $this->getJson('/api/dashboard')
             ->assertOk()
             ->assertJsonPath('best_sellers', [
-                ['menu_item_id' => $thieb->id, 'name' => 'Thiéboudienne', 'quantity' => 5, 'revenue' => 35000],
-                ['menu_item_id' => $poulet->id, 'name' => 'Poulet DG', 'quantity' => 4, 'revenue' => 24000],
-                ['menu_item_id' => $coca->id, 'name' => 'Coca', 'quantity' => 4, 'revenue' => 4000],
+                ['menu_item_id' => $thieb->id, 'name' => 'Thiéboudienne', 'quantity' => 5, 'revenue' => 35000, 'image' => null],
+                ['menu_item_id' => $poulet->id, 'name' => 'Poulet DG', 'quantity' => 4, 'revenue' => 24000, 'image' => null],
+                ['menu_item_id' => $coca->id, 'name' => 'Coca', 'quantity' => 4, 'revenue' => 4000, 'image' => null],
             ]);
     }
 
@@ -625,5 +626,43 @@ class DashboardApiTest extends TestCase
         $numbers = array_column($this->getJson('/api/dashboard')->assertOk()->json('recent_orders'), 'order_number');
 
         $this->assertSame(['ORD-ANCIENNE'], $numbers);
+    }
+
+    public function test_best_sellers_window_covers_the_last_30_local_days(): void
+    {
+        $dish = $this->dish($this->restaurant, 'Plat');
+
+        // 6 octobre 00:30 à Cotonou : premier jour de la fenêtre, inclus
+        $this->line($this->orderFor($this->restaurant, 'paid', '2026-10-05 23:30:00'), $dish, 2);
+        // 5 octobre 23:30 à Cotonou : la veille, exclu
+        $this->line($this->orderFor($this->restaurant, 'paid', '2026-10-05 22:30:00'), $dish, 100);
+
+        $this->loginAdmin();
+
+        $best = $this->getJson('/api/dashboard')->assertOk()->json('best_sellers');
+
+        $this->assertCount(1, $best);
+        $this->assertSame(2, $best[0]['quantity']);
+    }
+
+    public function test_best_sellers_include_the_dish_image(): void
+    {
+        $withImage = MenuItem::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'name' => 'Thiéboudienne',
+            'image' => 'thieb.jpg',
+        ]);
+        $withoutImage = $this->dish($this->restaurant, 'Coca');
+
+        $order = $this->orderFor($this->restaurant, 'paid', '2026-11-04 08:00:00');
+        $this->line($order, $withImage, 3);
+        $this->line($order, $withoutImage, 1);
+
+        $this->loginAdmin();
+
+        $best = $this->getJson('/api/dashboard')->assertOk()->json('best_sellers');
+
+        $this->assertSame('thieb.jpg', $best[0]['image']);
+        $this->assertNull($best[1]['image']);
     }
 }

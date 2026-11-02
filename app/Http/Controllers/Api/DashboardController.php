@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
@@ -14,6 +15,8 @@ use Illuminate\Http\Request;
 class DashboardController extends Controller
 {
     private const SERVICE_THRESHOLD_MINUTES = 15;
+
+    private const BEST_SELLERS_DAYS = 30;
 
     public function index(Request $request)
     {
@@ -47,7 +50,7 @@ class DashboardController extends Controller
             ],
             'sales' => $this->sales($restaurantId, $period, $now),
             'service' => $this->service($restaurantId, $today),
-            'best_sellers' => $this->bestSellers($restaurantId, $today),
+            'best_sellers' => $this->bestSellers($restaurantId, $now),
             'activity' => $this->activity($restaurantId),
             'recent_orders' => $this->recentOrders($restaurantId),
         ]);
@@ -242,15 +245,21 @@ class DashboardController extends Controller
         ];
     }
 
-    private function bestSellers(string $restaurantId, array $today): array
+    private function bestSellers(string $restaurantId, Carbon $now): array
     {
+        // Les 30 derniers jours calendaires, aujourd'hui compris, dans le fuseau du restaurant
+        $range = [
+            $now->copy()->subDays(self::BEST_SELLERS_DAYS - 1)->startOfDay(),
+            $now->copy()->endOfDay(),
+        ];
+
         $items = OrderItem::whereHas('order', fn ($q) => $q
             ->where('restaurant_id', $restaurantId)
             ->where('status', '!=', 'cancelled')
-            ->whereBetween('created_at', $this->toDbRange($today)))
+            ->whereBetween('created_at', $this->toDbRange($range)))
             ->get(['menu_item_id', 'item_name', 'quantity', 'total_price']);
 
-        return $items->groupBy('menu_item_id')
+        $top = $items->groupBy('menu_item_id')
             ->map(fn ($group, $menuItemId) => [
                 'menu_item_id' => $menuItemId,
                 'name' => $group->first()->item_name,
@@ -259,7 +268,14 @@ class DashboardController extends Controller
             ])
             ->sortBy([['quantity', 'desc'], ['revenue', 'desc'], ['name', 'asc']])
             ->take(5)
-            ->values()
+            ->values();
+
+        $images = MenuItem::where('restaurant_id', $restaurantId)
+            ->whereIn('id', $top->pluck('menu_item_id'))
+            ->pluck('image', 'id');
+
+        return $top
+            ->map(fn ($dish) => $dish + ['image' => $images[$dish['menu_item_id']] ?? null])
             ->all();
     }
 
