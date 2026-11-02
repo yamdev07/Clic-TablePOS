@@ -105,10 +105,27 @@ class RegisterTest extends TestCase
 
         $this->assertSame(0, User::count());
     }
-    public function test_new_restaurant_uses_benin_timezone(): void
-{
-    $this->postJson('/api/register', $this->payload)->assertCreated();
 
-    $this->assertSame('Africa/Porto-Novo', Restaurant::firstOrFail()->timezone);
-}
+    public function test_new_restaurant_uses_benin_timezone(): void
+    {
+        $this->postJson('/api/register', $this->payload)->assertCreated();
+
+        $this->assertSame('Africa/Porto-Novo', Restaurant::firstOrFail()->timezone);
+    }
+
+    public function test_register_accepts_a_custom_timezone(): void
+    {
+        $this->postJson('/api/register', array_merge($this->payload, [
+            'timezone' => 'Africa/Dakar',
+        ]))->assertCreated();
+
+        $this->assertSame('Africa/Dakar', Restaurant::firstOrFail()->timezone);
+    }
+
+    public function test_register_rejects_an_invalid_timezone(): void
+    {
+        $this->postJson('/api/register', array_merge($this->payload, [
+            'timezone' => 'Mars/Olympus',
+        ]))->assertStatus(422)->assertJsonValidationErrors('timezone');
+    }
 }

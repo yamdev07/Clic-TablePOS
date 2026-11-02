@@ -18,7 +18,9 @@ class DashboardDataTest extends TestCase
     use RefreshDatabase;
 
     private Restaurant $restaurant;
+
     private User $waiter;
+
     private User $kitchen;
 
     protected function setUp(): void
@@ -29,12 +31,12 @@ class DashboardDataTest extends TestCase
 
         $this->waiter = User::factory()->create([
             'restaurant_id' => $this->restaurant->id,
-            'role'          => 'waiter',
+            'role' => 'waiter',
         ]);
 
         $this->kitchen = User::factory()->create([
             'restaurant_id' => $this->restaurant->id,
-            'role'          => 'kitchen',
+            'role' => 'kitchen',
         ]);
     }
 
@@ -42,7 +44,7 @@ class DashboardDataTest extends TestCase
     {
         return Table::factory()->create([
             'restaurant_id' => $this->restaurant->id,
-            'status'        => 'free',
+            'status' => 'free',
         ]);
     }
 
@@ -50,21 +52,21 @@ class DashboardDataTest extends TestCase
     {
         $order = Order::factory()->create([
             'restaurant_id' => $this->restaurant->id,
-            'table_id'      => $this->freeTable()->id,
-            'user_id'       => $this->waiter->id,
-            'status'        => 'in_progress',
+            'table_id' => $this->freeTable()->id,
+            'user_id' => $this->waiter->id,
+            'status' => 'in_progress',
         ]);
 
         $menuItem = MenuItem::factory()->create(['restaurant_id' => $this->restaurant->id]);
 
         return OrderItem::create([
-            'id'             => (string) Str::uuid(),
-            'order_id'       => $order->id,
-            'menu_item_id'   => $menuItem->id,
-            'item_name'      => 'Plat',
-            'quantity'       => 1,
-            'unit_price'     => 1000,
-            'total_price'    => 1000,
+            'id' => (string) Str::uuid(),
+            'order_id' => $order->id,
+            'menu_item_id' => $menuItem->id,
+            'item_name' => 'Plat',
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'total_price' => 1000,
             'kitchen_status' => 'pending',
         ]);
     }
@@ -81,7 +83,7 @@ class DashboardDataTest extends TestCase
 
         $this->assertDatabaseHas('orders', [
             'restaurant_id' => $this->restaurant->id,
-            'guest_count'   => 4,
+            'guest_count' => 4,
         ]);
     }
 

@@ -85,6 +85,7 @@ class AuthController extends Controller
                 'confirmed',
                 Password::min(8)->mixedCase()->numbers(),
             ],
+            'timezone' => 'nullable|timezone',
         ]);
 
         $user = DB::transaction(function () use ($validated) {
@@ -95,7 +96,7 @@ class AuthController extends Controller
                     .'-'.Str::random(4),
                 'email' => $validated['email'],
                 'currency' => 'XOF',
-                 'timezone' => 'Africa/Porto-Novo',
+                'timezone' => $validated['timezone'] ?? 'Africa/Porto-Novo',
                 'status' => 'active',
             ]);
 

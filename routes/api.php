@@ -2,12 +2,13 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\KitchenController;
 use App\Http\Controllers\Api\LogController;
-use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -69,6 +70,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Stats sidebar (1 appel au lieu de 2)
     Route::get('/stats', [StatsController::class, 'index']);
     Route::get('/stats/z-report', [StatsController::class, 'zReport']);
+
+    // Tableau de bord (admin et gérant)
+    Route::get('/dashboard', [DashboardController::class, 'index']);
 
     // Logs (admin only)
     Route::get('/logs', [LogController::class, 'index']);
