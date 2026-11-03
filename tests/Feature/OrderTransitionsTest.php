@@ -136,4 +136,35 @@ class OrderTransitionsTest extends TestCase
         $this->assertSame('paid', $order->fresh()->status);
         $this->assertSame('free', $this->table->fresh()->status);
     }
+
+    public function test_status_route_cannot_mark_an_order_paid_or_reopen_it(): void
+    {
+        $served = $this->order('served', 1230);
+
+        $this->patchJson("/api/orders/{$served->id}/status", ['status' => 'paid'])
+            ->assertStatus(422)
+            ->assertJson(['success' => false, 'message' => 'Une commande passe en payée uniquement par un paiement.']);
+
+        $this->assertSame('served', $served->fresh()->status);
+        $this->assertSame('occupied', $this->table->fresh()->status);
+
+        $inProgress = $this->order('in_progress');
+
+        $this->patchJson("/api/orders/{$inProgress->id}/status", ['status' => 'open'])
+            ->assertStatus(422)
+            ->assertJson(['success' => false, 'message' => 'Une commande envoyée en cuisine ne peut pas redevenir ouverte.']);
+
+        $this->assertSame('in_progress', $inProgress->fresh()->status);
+    }
+
+    public function test_status_route_still_moves_an_order_to_ready_then_served(): void
+    {
+        $order = $this->order('in_progress');
+
+        $this->patchJson("/api/orders/{$order->id}/status", ['status' => 'ready'])->assertOk();
+        $this->assertSame('ready', $order->fresh()->status);
+
+        $this->patchJson("/api/orders/{$order->id}/status", ['status' => 'served'])->assertOk();
+        $this->assertSame('served', $order->fresh()->status);
+    }
 }
