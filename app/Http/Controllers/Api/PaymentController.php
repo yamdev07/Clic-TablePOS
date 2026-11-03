@@ -24,6 +24,11 @@ class PaymentController extends Controller
             'cash_given'   => 'nullable|integer|min:1',
             'reference'    => 'nullable|string|max:255',
         ]);
+        if ($order->status === 'cancelled') {
+    return response()->json([
+        'message' => 'Cette commande est annulée : elle ne peut pas être encaissée.',
+    ], 422);
+}
 
         if ($order->due_amount <= 0) {
             return response()->json(['message' => 'Cette commande est déjà entièrement payée'], 422);

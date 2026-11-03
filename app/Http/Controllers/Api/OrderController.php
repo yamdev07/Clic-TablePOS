@@ -40,6 +40,15 @@ class OrderController extends Controller
             ], 422));
         }
     }
+    private function ensureOrderCanBeSent(Order $order): void
+{
+    if ($order->status !== 'open') {
+        throw new HttpResponseException(response()->json([
+            'success' => false,
+            'message' => 'Cette commande ne peut plus être envoyée en cuisine.',
+        ], 422));
+    }
+}
 
     public function index(Request $request)
     {
@@ -181,6 +190,7 @@ class OrderController extends Controller
     public function confirm(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
+        $this->ensureOrderCanBeSent($order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
 
@@ -209,6 +219,7 @@ class OrderController extends Controller
     public function sendToKitchen(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
+        $this->ensureOrderCanBeSent($order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
 
@@ -231,6 +242,12 @@ class OrderController extends Controller
         if ($request->input('status') === 'cancelled') {
             return $this->cancelOrder($request, $order);
         }
+        if (in_array($order->status, ['paid', 'cancelled'], true)) {
+    return response()->json([
+        'success' => false,
+        'message' => 'Cette commande est terminée : son statut ne peut plus changer.',
+    ], 422);
+}
         try {
             $request->validate([
                 'status' => 'required|in:open,in_progress,ready,served,paid,cancelled',
