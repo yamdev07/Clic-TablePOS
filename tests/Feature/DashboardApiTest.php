@@ -443,14 +443,14 @@ class DashboardApiTest extends TestCase
 
     // ── Temps de service ──
 
-    public function test_service_time_is_computed_from_confirmation_to_ready(): void
+    public function test_service_time_is_computed_from_start_of_cooking_to_ready(): void
     {
         $dish = $this->dish($this->restaurant, 'Poulet DG');
         $order = $this->confirmedOrder($this->restaurant, '2026-11-04 08:00:00');
 
-        $this->line($order, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:10:00')]);   // 10 min
-        $this->line($order, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:15:00')]);   // 15 min : limite incluse
-        $this->line($order, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:20:00')]);   // 20 min
+        $this->line($order, $dish, 1, 1000, ['started_at' => $this->at('2026-11-04 08:00:00'), 'ready_at' => $this->at('2026-11-04 08:10:00')]);   // 10 min
+        $this->line($order, $dish, 1, 1000, ['started_at' => $this->at('2026-11-04 08:00:00'), 'ready_at' => $this->at('2026-11-04 08:15:00')]);   // 15 min : limite incluse
+        $this->line($order, $dish, 1, 1000, ['started_at' => $this->at('2026-11-04 08:00:00'), 'ready_at' => $this->at('2026-11-04 08:20:00')]);   // 20 min
 
         $this->loginAdmin();
 
@@ -460,25 +460,44 @@ class DashboardApiTest extends TestCase
             ->assertJsonPath('service.ready_under_15_pct', 66.7);
     }
 
+    public function test_service_time_ignores_the_wait_before_cooking_starts(): void
+    {
+        $dish = $this->dish($this->restaurant, 'Poulet DG');
+        $order = $this->confirmedOrder($this->restaurant, '2026-11-04 08:00:00');
+
+        // Plat A : cuisson à 08:10, prêt à 08:25 = 15 min
+        $this->line($order, $dish, 1, 1000, ['started_at' => $this->at('2026-11-04 08:10:00'), 'ready_at' => $this->at('2026-11-04 08:25:00')]);
+
+        // Plat B : présent depuis 08:00 mais cuisson lancée seulement à 08:25, prêt à 08:40 = 15 min
+        $this->line($order, $dish, 1, 1000, ['started_at' => $this->at('2026-11-04 08:25:00'), 'ready_at' => $this->at('2026-11-04 08:40:00')]);
+
+        $this->loginAdmin();
+
+        $this->getJson('/api/dashboard')
+            ->assertOk()
+            ->assertJsonPath('service.avg_wait_minutes', 15)
+            ->assertJsonPath('service.ready_under_15_pct', 100);
+    }
+
     public function test_service_time_ignores_unrelated_items(): void
     {
         $dish = $this->dish($this->restaurant, 'Poulet DG');
 
         $valid = $this->confirmedOrder($this->restaurant, '2026-11-04 08:00:00');
-        $this->line($valid, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 08:10:00')]);   // 10 min : le seul retenu
+        $this->line($valid, $dish, 1, 1000, ['started_at' => $this->at('2026-11-04 08:00:00'), 'ready_at' => $this->at('2026-11-04 08:10:00')]);   // 10 min : le seul retenu
 
         // prêt hier : ignoré
         $yesterday = $this->confirmedOrder($this->restaurant, '2026-11-03 08:00:00');
-        $this->line($yesterday, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-03 09:00:00')]);
+        $this->line($yesterday, $dish, 1, 1000, ['started_at' => $this->at('2026-11-03 08:00:00'), 'ready_at' => $this->at('2026-11-03 09:00:00')]);
 
-        // commande jamais envoyée en cuisine : ignorée
-        $unconfirmed = $this->orderFor($this->restaurant, 'open', '2026-11-04 08:00:00');
-        $this->line($unconfirmed, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 09:00:00')]);
+        // prêt mais jamais commencé (pas de started_at) : ignoré
+        $notStarted = $this->confirmedOrder($this->restaurant, '2026-11-04 08:00:00');
+        $this->line($notStarted, $dish, 1, 1000, ['ready_at' => $this->at('2026-11-04 09:00:00')]);
 
         // autre restaurant : ignoré
         $other = $this->otherRestaurant();
         $otherOrder = $this->confirmedOrder($other, '2026-11-04 08:00:00');
-        $this->line($otherOrder, $this->dish($other, 'Autre'), 1, 1000, ['ready_at' => $this->at('2026-11-04 10:00:00')]);
+        $this->line($otherOrder, $this->dish($other, 'Autre'), 1, 1000, ['started_at' => $this->at('2026-11-04 08:00:00'), 'ready_at' => $this->at('2026-11-04 10:00:00')]);
 
         $this->loginAdmin();
 
