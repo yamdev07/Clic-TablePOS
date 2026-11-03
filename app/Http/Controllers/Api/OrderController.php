@@ -11,11 +11,14 @@ use App\Models\Table;
 use App\Services\LogService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
+    private const CANCEL_ROLES = ['admin', 'manager', 'waiter'];
+
     private function ensureOrderBelongsToRestaurant(
         Request $request,
         Order $order
@@ -198,22 +201,8 @@ class OrderController extends Controller
     public function cancel(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
-        try {
-            $order->update(['status' => 'cancelled']);
 
-            if ($order->table) {
-                $order->table->update(['status' => 'free', 'current_order_id' => null]);
-            }
-
-            LogService::log($request, 'order.cancelled',
-                "Commande #{$order->order_number} annulée",
-                'order', $order->id);
-
-            return response()->json(['success' => true, 'message' => 'Commande annulée']);
-
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+        return $this->cancelOrder($request, $order);
     }
 
     public function sendToKitchen(Request $request, Order $order)
@@ -238,6 +227,9 @@ class OrderController extends Controller
     public function updateStatus(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
+        if ($request->input('status') === 'cancelled') {
+            return $this->cancelOrder($request, $order);
+        }
         try {
             $request->validate([
                 'status' => 'required|in:open,in_progress,ready,served,paid,cancelled',
@@ -264,6 +256,57 @@ class OrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    private function ensureCanCancel(Request $request): void
+    {
+        if (! in_array($request->user()->role, self::CANCEL_ROLES, true)) {
+            abort(403, "Seuls le serveur, le gérant et l'administrateur peuvent annuler une commande.");
+        }
+    }
+
+    private function cancelOrder(Request $request, Order $order)
+    {
+        $this->ensureCanCancel($request);
+
+        $oldStatus = null;
+
+        $error = DB::transaction(function () use ($order, &$oldStatus) {
+            // Verrou : d'abord la commande, puis ses plats
+            $locked = Order::whereKey($order->id)->lockForUpdate()->first();
+            $oldStatus = $locked->status;
+
+            if (in_array($locked->status, ['paid', 'cancelled'], true)) {
+                return 'Cette commande ne peut plus être annulée.';
+            }
+
+            $items = $locked->items()->lockForUpdate()->get(['id', 'kitchen_status']);
+            $started = $items->contains(fn ($item) => $item->kitchen_status !== 'pending');
+
+            if ($started || in_array($locked->status, ['ready', 'served'], true)) {
+                return "Impossible d'annuler cette commande : la préparation d'au moins un plat a déjà commencé.";
+            }
+
+            $locked->update(['status' => 'cancelled']);
+            $locked->table?->update(['status' => 'free', 'current_order_id' => null]);
+
+            return null;
+        });
+
+        if ($error) {
+            return response()->json(['success' => false, 'message' => $error], 422);
+        }
+
+        $order->refresh();
+
+        $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
+
+        LogService::log($request, 'order.cancelled',
+            "Commande #{$order->order_number} annulée",
+            'order', $order->id,
+            ['status' => $oldStatus], ['status' => 'cancelled']);
+
+        return response()->json(['success' => true, 'message' => 'Commande annulée', 'data' => $order]);
     }
 
     /** Broadcast silencieux — ne casse pas la réponse si Reverb est absent. */
