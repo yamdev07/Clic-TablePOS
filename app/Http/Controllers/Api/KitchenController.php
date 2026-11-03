@@ -6,8 +6,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\OrderItemStatusChanged;
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class KitchenController extends Controller
 {
@@ -37,32 +39,49 @@ class KitchenController extends Controller
     }
 
     public function startCooking(Request $request, OrderItem $item)
-{
-    $this->ensureItemBelongsToRestaurant($request, $item);
+    {
+        $this->ensureItemBelongsToRestaurant($request, $item);
 
-    $item->update([
-        'kitchen_status' => 'cooking',
-        'started_at' => $item->started_at ?? now(),
-    ]);
+        $error = DB::transaction(function () use ($item) {
+            // Même ordre de verrous que l'annulation : la commande d'abord, puis le plat
+            $order = Order::whereKey($item->order_id)->lockForUpdate()->first();
 
-    $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
+            if (in_array($order->status, ['cancelled', 'paid'], true)) {
+                return "Cette commande n'est plus active : impossible de commencer la préparation.";
+            }
 
-    return response()->json(['message' => 'Préparation commencée']);
-}
+            $locked = OrderItem::whereKey($item->id)->lockForUpdate()->first();
+            $locked->update([
+                'kitchen_status' => 'cooking',
+                'started_at' => $locked->started_at ?? now(),
+            ]);
 
-public function markReady(Request $request, OrderItem $item)
-{
-    $this->ensureItemBelongsToRestaurant($request, $item);
+            return null;
+        });
 
-    $item->update([
-        'kitchen_status' => 'ready',
-        'ready_at' => $item->ready_at ?? now(),
-    ]);
+        if ($error) {
+            return response()->json(['message' => $error], 422);
+        }
 
-    $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
+        $item->refresh();
+        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
-    return response()->json(['message' => 'Plat prêt']);
-}
+        return response()->json(['message' => 'Préparation commencée']);
+    }
+
+    public function markReady(Request $request, OrderItem $item)
+    {
+        $this->ensureItemBelongsToRestaurant($request, $item);
+
+        $item->update([
+            'kitchen_status' => 'ready',
+            'ready_at' => $item->ready_at ?? now(),
+        ]);
+
+        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
+
+        return response()->json(['message' => 'Plat prêt']);
+    }
 
     public function markServed(Request $request, OrderItem $item)
     {
