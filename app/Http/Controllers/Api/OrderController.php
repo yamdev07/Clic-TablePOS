@@ -9,6 +9,7 @@ use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\Table;
 use App\Services\LogService;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -24,6 +25,16 @@ class OrderController extends Controller
             (string) $request->user()->restaurant_id,
             404
         );
+    }
+
+    private function ensureOrderIsEditable(Order $order): void
+    {
+        if ($order->status !== 'open') {
+            throw new HttpResponseException(response()->json([
+                'success' => false,
+                'message' => 'Impossible de modifier cette commande : elle a déjà été envoyée en cuisine.',
+            ], 422));
+        }
     }
 
     public function index(Request $request)
@@ -97,6 +108,7 @@ class OrderController extends Controller
     public function addItem(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
+        $this->ensureOrderIsEditable($order);
         try {
             $request->validate([
                 'menu_item_id' => 'required|exists:menu_items,id',
@@ -143,6 +155,7 @@ class OrderController extends Controller
     public function removeItem(Request $request, Order $order, $itemId)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
+        $this->ensureOrderIsEditable($order);
         try {
             $item = $order->items()->where('id', $itemId)->first();
             $itemName = $item?->item_name ?? 'article';
