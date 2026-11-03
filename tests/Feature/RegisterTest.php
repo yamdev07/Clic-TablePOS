@@ -113,13 +113,13 @@ class RegisterTest extends TestCase
         $this->assertSame('Africa/Porto-Novo', Restaurant::firstOrFail()->timezone);
     }
 
-    public function test_register_accepts_a_custom_timezone(): void
+    public function ttest_register_ignores_custom_timezone_and_uses_benin_timezone(): void
     {
         $this->postJson('/api/register', array_merge($this->payload, [
             'timezone' => 'Africa/Dakar',
         ]))->assertCreated();
 
-        $this->assertSame('Africa/Dakar', Restaurant::firstOrFail()->timezone);
+        $this->assertSame('Africa/Porto-Novo', Restaurant::firstOrFail()->timezone);
     }
 
     public function test_register_rejects_an_invalid_timezone(): void
@@ -127,5 +127,37 @@ class RegisterTest extends TestCase
         $this->postJson('/api/register', array_merge($this->payload, [
             'timezone' => 'Mars/Olympus',
         ]))->assertStatus(422)->assertJsonValidationErrors('timezone');
+    }
+
+    public function test_register_force_le_fuseau_du_benin(): void
+    {
+        $this->withoutExceptionHandling();
+        $response = $this->postJson('/api/register', [
+            'restaurant_name' => 'Chez Awa',
+            'name' => 'Awa',
+            'email' => 'awa@example.com',
+            'password' => 'Motdepasse1',
+            'password_confirmation' => 'Motdepasse1',
+            'timezone' => 'America/New_York',
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('restaurants', [
+            'email' => 'awa@example.com',
+            'timezone' => 'Africa/Porto-Novo',
+        ]);
+    }
+
+    public function test_register_sans_fuseau_utilise_celui_du_benin(): void
+    {
+        $this->postJson('/api/register', [
+            'restaurant_name' => 'Chez Awa',
+            'name' => 'Awa',
+            'email' => 'awa@example.com',
+            'password' => 'Motdepasse1',
+            'password_confirmation' => 'Motdepasse1',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('restaurants', ['timezone' => 'Africa/Porto-Novo']);
     }
 }
