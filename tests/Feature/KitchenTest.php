@@ -175,4 +175,28 @@ class KitchenTest extends TestCase
         $found = collect($response->json())->firstWhere('id', $this->item->id);
         $this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
     }
+    /** @test */
+public function starting_cooking_records_started_at(): void
+{
+    $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
+        ->assertStatus(200);
+
+    $this->assertNotNull($this->item->fresh()->started_at);
+}
+
+/** @test */
+public function starting_cooking_twice_keeps_the_first_started_at(): void
+{
+    $this->travelTo(now()->setTime(12, 10));
+    $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
+        ->assertStatus(200);
+    $first = $this->item->fresh()->started_at;
+
+    $this->travelTo(now()->setTime(12, 25));
+    $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
+        ->assertStatus(200);
+
+    $this->assertNotNull($first);
+    $this->assertEquals($first, $this->item->fresh()->started_at);
+}
 }
