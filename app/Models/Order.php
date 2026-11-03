@@ -101,7 +101,7 @@ class Order extends Model
             'due_amount' => $due,
         ]);
 
-        if ($due <= 0 && $this->status !== 'paid') {
+       if ($total > 0 && $due <= 0 && $this->status !== 'paid') {
             $this->update(['status' => 'paid']);
             $table = $this->table()->first();
             if ($table) {
