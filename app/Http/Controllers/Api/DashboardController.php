@@ -14,12 +14,20 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+    private function adminOrManagerOnly(Request $request): void
+    {
+        if (! in_array($request->user()->role, ['admin', 'manager'], true)) {
+            abort(403, 'Accès réservé aux administrateurs et gérants');
+        }
+    }
+
     private const SERVICE_THRESHOLD_MINUTES = 15;
 
     private const BEST_SELLERS_DAYS = 30;
 
     public function index(Request $request)
     {
+        $this->adminOrManagerOnly($request);
         $user = $request->user();
 
         abort_unless(
