@@ -230,11 +230,12 @@ class DashboardController extends Controller
 
     private function service(string $restaurantId, array $today): array
     {
-        $items = OrderItem::whereNotNull('ready_at')
+        // Temps de préparation : du clic « Commencer » du cuisinier au clic « Prêt »
+        $items = OrderItem::whereNotNull('started_at')
+            ->whereNotNull('ready_at')
             ->whereBetween('ready_at', $this->toDbRange($today))
-            ->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId)->whereNotNull('confirmed_at'))
-            ->with('order:id,confirmed_at')
-            ->get(['id', 'order_id', 'ready_at']);
+            ->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId))
+            ->get(['id', 'order_id', 'started_at', 'ready_at']);
 
         if ($items->isEmpty()) {
             return ['avg_wait_minutes' => null, 'ready_under_15_pct' => null];
@@ -242,7 +243,7 @@ class DashboardController extends Controller
 
         $waits = $items->map(fn ($item) => max(
             0,
-            $item->ready_at->getTimestamp() - $item->order->confirmed_at->getTimestamp()
+            $item->ready_at->getTimestamp() - $item->started_at->getTimestamp()
         ) / 60);
 
         $fast = $waits->filter(fn ($minutes) => $minutes <= self::SERVICE_THRESHOLD_MINUTES)->count();
