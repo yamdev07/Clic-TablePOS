@@ -37,22 +37,32 @@ class KitchenController extends Controller
     }
 
     public function startCooking(Request $request, OrderItem $item)
-    {
-        $this->ensureItemBelongsToRestaurant($request, $item);
-        $item->update(['kitchen_status' => 'cooking']);
-        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
+{
+    $this->ensureItemBelongsToRestaurant($request, $item);
 
-        return response()->json(['message' => 'Préparation commencée']);
-    }
+    $item->update([
+        'kitchen_status' => 'cooking',
+        'started_at' => $item->started_at ?? now(),
+    ]);
 
-    public function markReady(Request $request, OrderItem $item)
-    {
-        $this->ensureItemBelongsToRestaurant($request, $item);
-       $item->update(['kitchen_status' => 'ready', 'ready_at' => $item->ready_at ?? now()]);
-        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
+    $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
-        return response()->json(['message' => 'Plat prêt']);
-    }
+    return response()->json(['message' => 'Préparation commencée']);
+}
+
+public function markReady(Request $request, OrderItem $item)
+{
+    $this->ensureItemBelongsToRestaurant($request, $item);
+
+    $item->update([
+        'kitchen_status' => 'ready',
+        'ready_at' => $item->ready_at ?? now(),
+    ]);
+
+    $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
+
+    return response()->json(['message' => 'Plat prêt']);
+}
 
     public function markServed(Request $request, OrderItem $item)
     {
