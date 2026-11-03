@@ -248,6 +248,22 @@ class OrderController extends Controller
         'message' => 'Cette commande est terminée : son statut ne peut plus changer.',
     ], 422);
 }
+if ($request->input('status') === 'paid') {
+    return response()->json([
+        'success' => false,
+        'message' => 'Une commande passe en payée uniquement par un paiement.',
+    ], 422);
+}
+
+if (
+    $request->input('status') === 'open'
+    && $order->status !== 'open'
+) {
+    return response()->json([
+        'success' => false,
+        'message' => 'Une commande envoyée en cuisine ne peut pas redevenir ouverte.',
+    ], 422);
+}
         try {
             $request->validate([
                 'status' => 'required|in:open,in_progress,ready,served,paid,cancelled',
