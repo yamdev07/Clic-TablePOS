@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\OrderCancelled;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -9,11 +10,10 @@ use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
-use App\Events\OrderCancelled;
-use Illuminate\Support\Facades\Event;
 
 class OrderCancellationTest extends TestCase
 {
@@ -117,6 +117,32 @@ class OrderCancellationTest extends TestCase
         }
     }
 
+    public function test_cancelling_one_order_does_not_free_table_while_another_order_is_active(): void
+    {
+        $this->actingAsRole('waiter');
+
+        $firstOrder = $this->order('in_progress', ['pending']);
+
+        $secondOrder = Order::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->restaurant->id,
+            'table_id' => $this->table->id,
+            'user_id' => User::factory()->create([
+                'restaurant_id' => $this->restaurant->id,
+            ])->id,
+            'status' => 'open',
+        ]);
+
+        $firstOrderId = $firstOrder->id;
+
+        $this->cancel($firstOrder, 'cancel')->assertOk();
+
+        $this->assertSame('cancelled', $firstOrder->fresh()->status);
+        $this->assertSame('open', $secondOrder->fresh()->status);
+        $this->assertSame('occupied', $this->table->fresh()->status);
+        $this->assertSame($firstOrderId, $this->table->fresh()->current_order_id);
+    }
+
     public function test_waiter_manager_and_admin_can_cancel(): void
     {
         foreach (['waiter', 'manager', 'admin'] as $role) {
@@ -199,65 +225,66 @@ class OrderCancellationTest extends TestCase
 
         $this->assertFalse($ids->contains($itemId));
     }
+
     public function test_kitchen_cannot_start_an_item_of_a_cancelled_or_paid_order(): void
-{
-    foreach (['cancelled', 'paid'] as $status) {
-        $this->actingAsRole('waiter');
-        $order = $this->order($status, ['pending']);
-        $item = $order->items()->first();
+    {
+        foreach (['cancelled', 'paid'] as $status) {
+            $this->actingAsRole('waiter');
+            $order = $this->order($status, ['pending']);
+            $item = $order->items()->first();
 
-        $this->actingAsRole('kitchen');
-        $this->patchJson("/api/kitchen/items/{$item->id}/cooking")
-            ->assertStatus(422)
-            ->assertJson(['message' => "Cette commande n'est plus active : impossible de commencer la préparation."]);
+            $this->actingAsRole('kitchen');
+            $this->patchJson("/api/kitchen/items/{$item->id}/cooking")
+                ->assertStatus(422)
+                ->assertJson(['message' => "Cette commande n'est plus active : impossible de commencer la préparation."]);
 
-        $this->assertSame('pending', $item->fresh()->kitchen_status, "commande {$status}");
-        $this->assertNull($item->fresh()->started_at, "commande {$status}");
+            $this->assertSame('pending', $item->fresh()->kitchen_status, "commande {$status}");
+            $this->assertNull($item->fresh()->started_at, "commande {$status}");
+        }
     }
-}
 
-public function test_cancelling_is_refused_after_the_cook_started_an_item(): void
-{
-    $this->actingAsRole('waiter');
-    $order = $this->order('in_progress', ['pending', 'pending']);
-    $pizza = $order->items()->first();
+    public function test_cancelling_is_refused_after_the_cook_started_an_item(): void
+    {
+        $this->actingAsRole('waiter');
+        $order = $this->order('in_progress', ['pending', 'pending']);
+        $pizza = $order->items()->first();
 
-    // le cuisinier commence la pizza
-    $this->actingAsRole('kitchen');
-    $this->patchJson("/api/kitchen/items/{$pizza->id}/cooking")->assertOk();
+        // le cuisinier commence la pizza
+        $this->actingAsRole('kitchen');
+        $this->patchJson("/api/kitchen/items/{$pizza->id}/cooking")->assertOk();
 
-    // puis le serveur tente d'annuler
-    $this->actingAsRole('waiter');
-    $this->cancel($order, 'cancel')
-        ->assertStatus(422)
-        ->assertJson(['message' => self::STARTED_MESSAGE]);
+        // puis le serveur tente d'annuler
+        $this->actingAsRole('waiter');
+        $this->cancel($order, 'cancel')
+            ->assertStatus(422)
+            ->assertJson(['message' => self::STARTED_MESSAGE]);
 
-    $this->assertSame('in_progress', $order->fresh()->status);
-}
+        $this->assertSame('in_progress', $order->fresh()->status);
+    }
 
-public function test_cancelling_broadcasts_order_cancelled(): void
-{
-    Event::fake([OrderCancelled::class]);
+    public function test_cancelling_broadcasts_order_cancelled(): void
+    {
+        Event::fake([OrderCancelled::class]);
 
-    $this->actingAsRole('waiter');
-    $order = $this->order('in_progress', ['pending']);
+        $this->actingAsRole('waiter');
+        $order = $this->order('in_progress', ['pending']);
 
-    $this->cancel($order, 'cancel')->assertOk();
+        $this->cancel($order, 'cancel')->assertOk();
 
-    Event::assertDispatched(OrderCancelled::class, fn ($event) => $event->order->id === $order->id);
-}
+        Event::assertDispatched(OrderCancelled::class, fn ($event) => $event->order->id === $order->id);
+    }
 
-public function test_order_cancelled_event_goes_to_the_kitchen_channel_without_amounts(): void
-{
-    $order = $this->order('in_progress', ['pending']);
-    $event = new OrderCancelled($order);
+    public function test_order_cancelled_event_goes_to_the_kitchen_channel_without_amounts(): void
+    {
+        $order = $this->order('in_progress', ['pending']);
+        $event = new OrderCancelled($order);
 
-    $channels = collect($event->broadcastOn())->map(fn ($channel) => $channel->name)->all();
+        $channels = collect($event->broadcastOn())->map(fn ($channel) => $channel->name)->all();
 
-    $this->assertSame(['private-kitchen.'.$this->restaurant->id], $channels);
-    $this->assertSame('order.cancelled', $event->broadcastAs());
-    $this->assertSame($order->id, $event->broadcastWith()['id']);
-    $this->assertArrayNotHasKey('total', $event->broadcastWith());
-    $this->assertArrayNotHasKey('due_amount', $event->broadcastWith());
-}
+        $this->assertSame(['private-kitchen.'.$this->restaurant->id], $channels);
+        $this->assertSame('order.cancelled', $event->broadcastAs());
+        $this->assertSame($order->id, $event->broadcastWith()['id']);
+        $this->assertArrayNotHasKey('total', $event->broadcastWith());
+        $this->assertArrayNotHasKey('due_amount', $event->broadcastWith());
+    }
 }

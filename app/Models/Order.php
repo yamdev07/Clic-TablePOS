@@ -101,11 +101,22 @@ class Order extends Model
             'due_amount' => $due,
         ]);
 
-       if ($total > 0 && $due <= 0 && $this->status !== 'paid') {
+        if ($total > 0 && $due <= 0 && $this->status !== 'paid') {
             $this->update(['status' => 'paid']);
+
             $table = $this->table()->first();
+
             if ($table) {
-                $table->update(['status' => 'free', 'current_order_id' => null]);
+                $hasActiveOrders = Order::where('table_id', $table->id)
+                    ->whereNotIn('status', ['paid', 'cancelled'])
+                    ->exists();
+
+                if (! $hasActiveOrders) {
+                    $table->update([
+                        'status' => 'free',
+                        'current_order_id' => null,
+                    ]);
+                }
             }
         }
     }

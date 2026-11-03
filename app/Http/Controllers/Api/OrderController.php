@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\NewOrderReceived;
+use App\Events\OrderCancelled;
 use App\Events\OrderStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\Table;
 use App\Services\LogService;
-use App\Events\OrderCancelled;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,15 +40,16 @@ class OrderController extends Controller
             ], 422));
         }
     }
+
     private function ensureOrderCanBeSent(Order $order): void
-{
-    if ($order->status !== 'open') {
-        throw new HttpResponseException(response()->json([
-            'success' => false,
-            'message' => 'Cette commande ne peut plus être envoyée en cuisine.',
-        ], 422));
+    {
+        if ($order->status !== 'open') {
+            throw new HttpResponseException(response()->json([
+                'success' => false,
+                'message' => 'Cette commande ne peut plus être envoyée en cuisine.',
+            ], 422));
+        }
     }
-}
 
     public function index(Request $request)
     {
@@ -86,7 +87,7 @@ class OrderController extends Controller
                     'message' => 'Cette table appartient à un autre restaurant.',
                 ], 404);
             }
-            if ($table->status !== 'free') {
+            if (! in_array($table->status, ['free', 'occupied'], true)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Table non disponible',
@@ -103,7 +104,10 @@ class OrderController extends Controller
                 'guest_count' => $request->guest_count,
             ]);
 
-            $table->update(['status' => 'occupied', 'current_order_id' => $order->id]);
+            $table->update([
+                'status' => 'occupied',
+                'current_order_id' => $table->current_order_id ?? $order->id,
+            ]);
 
             LogService::log($request, 'order.created',
                 "Commande #{$order->order_number} créée — Table {$table->number}",
@@ -243,27 +247,27 @@ class OrderController extends Controller
             return $this->cancelOrder($request, $order);
         }
         if (in_array($order->status, ['paid', 'cancelled'], true)) {
-    return response()->json([
-        'success' => false,
-        'message' => 'Cette commande est terminée : son statut ne peut plus changer.',
-    ], 422);
-}
-if ($request->input('status') === 'paid') {
-    return response()->json([
-        'success' => false,
-        'message' => 'Une commande passe en payée uniquement par un paiement.',
-    ], 422);
-}
+            return response()->json([
+                'success' => false,
+                'message' => 'Cette commande est terminée : son statut ne peut plus changer.',
+            ], 422);
+        }
+        if ($request->input('status') === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Une commande passe en payée uniquement par un paiement.',
+            ], 422);
+        }
 
-if (
-    $request->input('status') === 'open'
-    && $order->status !== 'open'
-) {
-    return response()->json([
-        'success' => false,
-        'message' => 'Une commande envoyée en cuisine ne peut pas redevenir ouverte.',
-    ], 422);
-}
+        if (
+            $request->input('status') === 'open'
+            && $order->status !== 'open'
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Une commande envoyée en cuisine ne peut pas redevenir ouverte.',
+            ], 422);
+        }
         try {
             $request->validate([
                 'status' => 'required|in:open,in_progress,ready,served,paid,cancelled',
@@ -322,7 +326,20 @@ if (
             }
 
             $locked->update(['status' => 'cancelled']);
-            $locked->table?->update(['status' => 'free', 'current_order_id' => null]);
+            $table = $locked->table;
+
+            if ($table) {
+                $hasActiveOrders = Order::where('table_id', $table->id)
+                    ->whereNotIn('status', ['paid', 'cancelled'])
+                    ->exists();
+
+                if (! $hasActiveOrders) {
+                    $table->update([
+                        'status' => 'free',
+                        'current_order_id' => null,
+                    ]);
+                }
+            }
 
             return null;
         });
@@ -335,7 +352,7 @@ if (
 
         $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
         $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
-$this->tryBroadcast(fn () => broadcast(new OrderCancelled($order)));
+        $this->tryBroadcast(fn () => broadcast(new OrderCancelled($order)));
 
         LogService::log($request, 'order.cancelled',
             "Commande #{$order->order_number} annulée",

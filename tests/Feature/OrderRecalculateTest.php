@@ -89,4 +89,40 @@ class OrderRecalculateTest extends TestCase
         $this->assertSame('paid', $this->order->fresh()->status);
         $this->assertSame('free', $this->table->fresh()->status);
     }
+
+    public function test_paying_one_order_does_not_free_table_while_another_order_is_active(): void
+    {
+        // Créer un plat pour la première commande
+        $this->postJson("/api/orders/{$this->order->id}/items", [
+            'menu_item_id' => $this->dish->id,
+            'quantity' => 1,
+        ])->assertCreated();
+
+        // Créer une deuxième commande sur la même table
+        $secondOrder = Order::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->order->restaurant_id,
+            'table_id' => $this->table->id,
+            'user_id' => $this->admin->id,
+            'status' => 'open',
+        ]);
+
+        // Garder la première commande comme commande principale
+        $firstOrderId = $this->order->id;
+
+        // Payer entièrement la première commande
+        $this->postJson("/api/orders/{$this->order->id}/payments", [
+            'amount' => $this->order->fresh()->total,
+            'method' => 'cash',
+        ])->assertCreated();
+
+        $this->assertSame('paid', $this->order->fresh()->status);
+        $this->assertSame('open', $secondOrder->fresh()->status);
+
+        // La table doit rester occupée
+        $this->assertSame('occupied', $this->table->fresh()->status);
+
+        // La première référence doit être conservée
+        $this->assertSame($firstOrderId, $this->table->fresh()->current_order_id);
+    }
 }

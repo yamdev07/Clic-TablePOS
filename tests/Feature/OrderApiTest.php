@@ -72,15 +72,48 @@ class OrderApiTest extends TestCase
     }
 
     /** @test */
-    public function user_cannot_create_order_on_occupied_table()
+    /** @test */
+    public function user_can_create_another_order_on_occupied_table_without_replacing_current_order()
     {
-        $this->table->update(['status' => 'occupied']);
+        $firstOrder = Order::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->restaurant->id,
+            'table_id' => $this->table->id,
+            'user_id' => $this->user->id,
+            'status' => 'in_progress',
+            'order_number' => 'ORD-FIRST-001',
+        ]);
+
+        $this->table->update([
+            'status' => 'occupied',
+            'current_order_id' => $firstOrder->id,
+        ]);
 
         $response = $this->postJson('/api/orders', [
             'table_id' => $this->table->id,
         ]);
 
-        $response->assertStatus(422);
+        $response->assertStatus(201);
+
+        $secondOrderId = $response->json('data.id');
+
+        $this->assertNotEquals($firstOrder->id, $secondOrderId);
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $firstOrder->id,
+            'table_id' => $this->table->id,
+        ]);
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $secondOrderId,
+            'table_id' => $this->table->id,
+        ]);
+
+        $this->assertDatabaseHas('tables', [
+            'id' => $this->table->id,
+            'status' => 'occupied',
+            'current_order_id' => $firstOrder->id,
+        ]);
     }
 
     /** @test */
@@ -131,5 +164,22 @@ class OrderApiTest extends TestCase
             'id' => $order->id,
             'status' => 'in_progress',
         ]);
+    }
+
+    /** @test */
+    public function user_cannot_create_order_on_reserved_or_dirty_table()
+    {
+        foreach (['reserved', 'dirty'] as $status) {
+            $this->table->update([
+                'status' => $status,
+                'current_order_id' => null,
+            ]);
+
+            $response = $this->postJson('/api/orders', [
+                'table_id' => $this->table->id,
+            ]);
+
+            $response->assertStatus(422);
+        }
     }
 }
