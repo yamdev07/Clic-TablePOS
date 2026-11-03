@@ -9,6 +9,7 @@ use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\Table;
 use App\Services\LogService;
+use App\Events\OrderCancelled;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -300,6 +301,8 @@ class OrderController extends Controller
         $order->refresh();
 
         $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
+        $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
+$this->tryBroadcast(fn () => broadcast(new OrderCancelled($order)));
 
         LogService::log($request, 'order.cancelled',
             "Commande #{$order->order_number} annulée",
