@@ -101,4 +101,34 @@ class DashboardRealtimeTest extends TestCase
 
         $this->assertDatabaseHas('activity_logs', ['id' => $log->id]);
     }
+
+    public function test_successful_login_broadcasts_activity_to_its_restaurant(): void
+    {
+        Event::fake([DashboardActivity::class]);
+
+        $user = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'admin',
+            'password' => bcrypt('Password123'),
+        ]);
+
+        $this->postJson('/api/login', [
+            'email' => $user->email,
+            'password' => 'Password123',
+        ])->assertOk();
+
+        $log = ActivityLog::where('action', 'auth.login')
+            ->where('user_id', $user->id)
+            ->first();
+
+        $this->assertNotNull($log);
+
+        Event::assertDispatched(DashboardActivity::class, function (DashboardActivity $event) use ($user) {
+            return $event->restaurantId === $this->restaurant->id
+                && $event->entry['action'] === 'auth.login'
+                && $event->entry['user_name'] === $user->name
+                && ! array_key_exists('ip_address', $event->entry)
+                && ! array_key_exists('user_agent', $event->entry);
+        });
+    }
 }
