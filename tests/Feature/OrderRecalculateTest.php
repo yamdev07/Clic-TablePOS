@@ -57,6 +57,39 @@ class OrderRecalculateTest extends TestCase
 
         Sanctum::actingAs($this->admin);
     }
+        private function newOrder(int $minutesAgo): Order
+    {
+        $order = Order::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->order->restaurant_id,
+            'table_id' => $this->table->id,
+            'user_id' => $this->admin->id,
+            'status' => 'open',
+        ]);
+        $order->forceFill(['created_at' => now()->subMinutes($minutesAgo)])->save();
+
+        return $order;
+    }
+
+    private function addItemAndPrice(Order $order): void
+    {
+        $order->items()->create([
+            'menu_item_id' => $this->dish->id,
+            'item_name' => $this->dish->name,
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'total_price' => 1000,
+        ]);
+        $order->recalculate();
+    }
+
+    private function pay(Order $order): void
+    {
+        $this->postJson("/api/orders/{$order->id}/payments", [
+            'amount' => $order->fresh()->total,
+            'method' => 'cash',
+        ])->assertCreated();
+    }
 
     public function test_removing_the_last_item_does_not_mark_the_order_paid(): void
     {
@@ -107,8 +140,7 @@ class OrderRecalculateTest extends TestCase
             'status' => 'open',
         ]);
 
-        // Garder la première commande comme commande principale
-        $firstOrderId = $this->order->id;
+
 
         // Payer entièrement la première commande
         $this->postJson("/api/orders/{$this->order->id}/payments", [
@@ -122,7 +154,30 @@ class OrderRecalculateTest extends TestCase
         // La table doit rester occupée
         $this->assertSame('occupied', $this->table->fresh()->status);
 
-        // La première référence doit être conservée
-        $this->assertSame($firstOrderId, $this->table->fresh()->current_order_id);
+                // La première commande est terminée : la table pointe vers celle qui reste active
+        $this->assertSame($secondOrder->id, $this->table->fresh()->current_order_id);
+    }
+        public function test_table_points_to_the_oldest_active_order_until_all_are_closed(): void
+    {
+        $first = $this->order;
+        $first->forceFill(['created_at' => now()->subMinutes(30)])->save();
+        $second = $this->newOrder(20);
+        $third = $this->newOrder(10);
+
+        foreach ([$first, $second, $third] as $order) {
+            $this->addItemAndPrice($order);
+        }
+
+        $this->pay($first);
+        $this->assertSame('occupied', $this->table->fresh()->status);
+        $this->assertSame($second->id, $this->table->fresh()->current_order_id);
+
+        $this->pay($second);
+        $this->assertSame('occupied', $this->table->fresh()->status);
+        $this->assertSame($third->id, $this->table->fresh()->current_order_id);
+
+        $this->pay($third);
+        $this->assertSame('free', $this->table->fresh()->status);
+        $this->assertNull($this->table->fresh()->current_order_id);
     }
 }
