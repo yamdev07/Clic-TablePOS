@@ -351,7 +351,6 @@ class OrderController extends Controller
         $order->refresh();
 
         $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
-        $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
         $this->tryBroadcast(fn () => broadcast(new OrderCancelled($order)));
 
         LogService::log($request, 'order.cancelled',
