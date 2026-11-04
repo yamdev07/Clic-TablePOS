@@ -74,6 +74,7 @@ class OrderRecalculateTest extends TestCase
             'user_id' => $this->admin->id,
             'status' => 'in_progress',
         ]);
+        $this->order->update(['status' => 'served']);
 
         // Payer entièrement la première commande
         $this->postJson("/api/orders/{$this->order->id}/payments", [
@@ -111,6 +112,7 @@ class OrderRecalculateTest extends TestCase
         ])->assertCreated();
 
         $total = $this->order->fresh()->total;
+        $this->order->update(['status' => 'served']);
 
         $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $total,

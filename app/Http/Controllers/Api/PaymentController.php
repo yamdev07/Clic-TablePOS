@@ -19,19 +19,27 @@ class PaymentController extends Controller
     public function store(Request $request, Order $order)
     {
         $request->validate([
-            'amount'       => 'required|integer|min:1',
-            'method'       => 'required|in:cash,card,wave,orange_money',
-            'cash_given'   => 'nullable|integer|min:1',
-            'reference'    => 'nullable|string|max:255',
+            'amount' => 'required|integer|min:1',
+            'method' => 'required|in:cash,card,wave,orange_money',
+            'cash_given' => 'nullable|integer|min:1',
+            'reference' => 'nullable|string|max:255',
         ]);
         if ($order->status === 'cancelled') {
-    return response()->json([
-        'message' => 'Cette commande est annulée : elle ne peut pas être encaissée.',
-    ], 422);
-}
+            return response()->json([
+                'message' => 'Cette commande est annulée : elle ne peut pas être encaissée.',
+            ], 422);
+        }
 
-        if ($order->due_amount <= 0) {
-            return response()->json(['message' => 'Cette commande est déjà entièrement payée'], 422);
+        if ($order->due_amount <= 0 || $order->status === 'paid') {
+            return response()->json([
+                'message' => 'Cette commande est déjà entièrement payée',
+            ], 422);
+        }
+
+        if ($order->status !== 'served') {
+            return response()->json([
+                'message' => 'Une commande doit être servie avant de pouvoir être encaissée.',
+            ], 422);
         }
 
         // For cash payments allow sending more than due (the change is handled client-side)
@@ -46,13 +54,13 @@ class PaymentController extends Controller
         }
 
         $payment = Payment::create([
-            'id'        => (string) Str::uuid(),
-            'order_id'  => $order->id,
-            'user_id'   => $request->user()->id,
-            'amount'    => $amountToRecord,
-            'method'    => $request->method,
+            'id' => (string) Str::uuid(),
+            'order_id' => $order->id,
+            'user_id' => $request->user()->id,
+            'amount' => $amountToRecord,
+            'method' => $request->method,
             'reference' => $request->reference,
-            'status'    => 'completed',
+            'status' => 'completed',
         ]);
 
         $order->recalculate();

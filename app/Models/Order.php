@@ -10,8 +10,9 @@ use Illuminate\Support\Str;
 
 class Order extends Model
 {
-        /** Une commande open est un brouillon : elle n'est pas active. */
+    /** Une commande open est un brouillon : elle n'est pas active. */
     public const ACTIVE_STATUSES = ['in_progress', 'ready', 'served'];
+
     use HasFactory;
 
     public $incrementing = false;
@@ -103,7 +104,7 @@ class Order extends Model
             'due_amount' => $due,
         ]);
 
-              if ($total > 0 && $due <= 0 && $this->status !== 'paid') {
+        if ($total > 0 && $due <= 0 && $this->status === 'served') {
             $this->update(['status' => 'paid']);
             $this->table()->first()?->syncCurrentOrder();
         }

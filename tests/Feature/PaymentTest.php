@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
-use App\Models\Payment;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
@@ -18,9 +17,11 @@ class PaymentTest extends TestCase
 {
     use RefreshDatabase;
 
-    private User       $user;
+    private User $user;
+
     private Restaurant $restaurant;
-    private Order      $order;
+
+    private Order $order;
 
     protected function setUp(): void
     {
@@ -30,37 +31,37 @@ class PaymentTest extends TestCase
 
         $this->user = User::factory()->create([
             'restaurant_id' => $this->restaurant->id,
-            'role'          => 'admin',
+            'role' => 'admin',
         ]);
 
         $table = Table::factory()->create([
             'restaurant_id' => $this->restaurant->id,
-            'status'        => 'occupied',
+            'status' => 'occupied',
         ]);
 
         $menuItem = MenuItem::factory()->create([
             'restaurant_id' => $this->restaurant->id,
-            'price'         => 5000,
+            'price' => 5000,
         ]);
 
         // Commande vide, sera recalculée après ajout des items
         $this->order = Order::create([
-            'id'            => (string) Str::uuid(),
+            'id' => (string) Str::uuid(),
             'restaurant_id' => $this->restaurant->id,
-            'table_id'      => $table->id,
-            'user_id'       => $this->user->id,
-            'status'        => 'in_progress',
+            'table_id' => $table->id,
+            'user_id' => $this->user->id,
+            'status' => 'served',
         ]);
 
         // 2 items à 5000 → subtotal=10000, tax=1800, service=500, total=12300
         OrderItem::create([
-            'id'           => (string) Str::uuid(),
-            'order_id'     => $this->order->id,
+            'id' => (string) Str::uuid(),
+            'order_id' => $this->order->id,
             'menu_item_id' => $menuItem->id,
-            'item_name'    => $menuItem->name,
-            'quantity'     => 2,
-            'unit_price'   => 5000,
-            'total_price'  => 10000,
+            'item_name' => $menuItem->name,
+            'quantity' => 2,
+            'unit_price' => 5000,
+            'total_price' => 10000,
         ]);
 
         $this->order->recalculate();
@@ -82,21 +83,21 @@ class PaymentTest extends TestCase
         $response->assertStatus(201);
         $this->assertDatabaseHas('payments', [
             'order_id' => $this->order->id,
-            'amount'   => $due,
-            'method'   => 'cash',
-            'status'   => 'completed',
+            'amount' => $due,
+            'method' => 'cash',
+            'status' => 'completed',
         ]);
     }
 
     /** @test */
     public function cash_overpayment_is_capped_at_due_amount(): void
     {
-        $due  = $this->order->due_amount; // 12300
+        $due = $this->order->due_amount; // 12300
         $given = $due + 5000;             // 17300
 
         $response = $this->postJson("/api/orders/{$this->order->id}/payments", [
-            'amount'     => $given,
-            'method'     => 'cash',
+            'amount' => $given,
+            'method' => 'cash',
             'cash_given' => $given,
         ]);
 
@@ -105,7 +106,7 @@ class PaymentTest extends TestCase
         // Le montant enregistré doit être plafonné à due_amount
         $this->assertDatabaseHas('payments', [
             'order_id' => $this->order->id,
-            'amount'   => $due,
+            'amount' => $due,
         ]);
     }
 
@@ -131,9 +132,9 @@ class PaymentTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('orders', [
-            'id'          => $this->order->id,
+            'id' => $this->order->id,
             'paid_amount' => $due,
-            'due_amount'  => 0,
+            'due_amount' => 0,
         ]);
     }
 
@@ -149,9 +150,9 @@ class PaymentTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('orders', [
-            'id'          => $this->order->id,
+            'id' => $this->order->id,
             'paid_amount' => $partial,
-            'due_amount'  => $remaining,
+            'due_amount' => $remaining,
         ]);
     }
 
@@ -171,20 +172,20 @@ class PaymentTest extends TestCase
         ]);
 
         $response->assertStatus(422)
-                 ->assertJsonFragment(['message' => 'Cette commande est déjà entièrement payée']);
+            ->assertJsonFragment(['message' => 'Cette commande est déjà entièrement payée']);
     }
 
     /** @test */
     public function payment_reference_is_saved(): void
     {
         $this->postJson("/api/orders/{$this->order->id}/payments", [
-            'amount'    => 10000,
-            'method'    => 'wave',
+            'amount' => 10000,
+            'method' => 'wave',
             'reference' => 'WAVE-20240413-001',
         ]);
 
         $this->assertDatabaseHas('payments', [
-            'order_id'  => $this->order->id,
+            'order_id' => $this->order->id,
             'reference' => 'WAVE-20240413-001',
         ]);
     }
