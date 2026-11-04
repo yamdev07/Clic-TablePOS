@@ -197,7 +197,7 @@ class OrderController extends Controller
         $this->ensureOrderCanBeSent($order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
-                        $order->table?->syncCurrentOrder();
+            $order->table?->syncCurrentOrder();
 
             foreach ($order->items as $item) {
                 $item->update(['kitchen_status' => 'pending']);
@@ -227,7 +227,7 @@ class OrderController extends Controller
         $this->ensureOrderCanBeSent($order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
-                        $order->table?->syncCurrentOrder();
+            $order->table?->syncCurrentOrder();
 
             $this->tryBroadcast(fn () => broadcast(new NewOrderReceived($order))->toOthers());
 
@@ -261,19 +261,27 @@ class OrderController extends Controller
             ], 422);
         }
 
-        if (
-            $request->input('status') === 'open'
-            && $order->status !== 'open'
-        ) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Une commande envoyée en cuisine ne peut pas redevenir ouverte.',
-            ], 422);
-        }
         try {
             $request->validate([
                 'status' => 'required|in:open,in_progress,ready,served,paid,cancelled',
+
             ]);
+            $allowedTransitions = [
+                'open' => 'in_progress',
+                'in_progress' => 'ready',
+                'ready' => 'served',
+            ];
+
+            if (($allowedTransitions[$order->status] ?? null) !== $request->status) {
+                $message = $request->status === 'open'
+                    ? 'Une commande envoyée en cuisine ne peut pas redevenir ouverte.'
+                    : 'Transition de statut invalide. Respectez l’ordre : open → in_progress → ready → served.';
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 422);
+            }
 
             $oldStatus = $order->status;
             $order->update(['status' => $request->status]);
@@ -327,7 +335,7 @@ class OrderController extends Controller
                 return "Impossible d'annuler cette commande : la préparation d'au moins un plat a déjà commencé.";
             }
 
-                       $locked->update(['status' => 'cancelled']);
+            $locked->update(['status' => 'cancelled']);
             $locked->table?->syncCurrentOrder();
 
             return null;

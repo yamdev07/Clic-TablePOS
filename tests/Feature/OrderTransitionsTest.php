@@ -167,4 +167,50 @@ class OrderTransitionsTest extends TestCase
         $this->patchJson("/api/orders/{$order->id}/status", ['status' => 'served'])->assertOk();
         $this->assertSame('served', $order->fresh()->status);
     }
+
+    public function test_order_status_transitions_cannot_skip_or_reverse_steps(): void
+    {
+        $invalidTransitions = [
+            'open' => ['ready', 'served'],
+            'in_progress' => ['served', 'open'],
+            'ready' => ['in_progress', 'open'],
+            'served' => ['ready', 'in_progress', 'open'],
+        ];
+
+        foreach ($invalidTransitions as $currentStatus => $nextStatuses) {
+            foreach ($nextStatuses as $nextStatus) {
+                $order = $this->order($currentStatus);
+
+                $this->patchJson("/api/orders/{$order->id}/status", [
+                    'status' => $nextStatus,
+                ])->assertStatus(422);
+
+                $this->assertSame(
+                    $currentStatus,
+                    $order->fresh()->status,
+                    "La transition {$currentStatus} → {$nextStatus} aurait dû être refusée."
+                );
+            }
+        }
+    }
+
+    public function test_an_order_cannot_be_paid_before_being_served(): void
+    {
+        foreach (['open', 'in_progress', 'ready'] as $status) {
+            $order = $this->order($status, 1230);
+
+            $this->postJson("/api/orders/{$order->id}/payments", [
+                'amount' => 1230,
+                'method' => 'cash',
+            ])
+                ->assertStatus(422)
+                ->assertJson([
+                    'message' => 'Une commande doit être servie avant de pouvoir être encaissée.',
+                ]);
+
+            $this->assertSame($status, $order->fresh()->status);
+        }
+
+        $this->assertDatabaseCount('payments', 0);
+    }
 }
