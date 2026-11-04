@@ -60,6 +60,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Kitchen
     Route::get('/kitchen/pending', [KitchenController::class, 'pendingOrders']);
+        Route::patch('/kitchen/orders/{order}/cooking', [KitchenController::class, 'startOrderCooking']);
     Route::patch('/kitchen/orders/{order}/ready', [KitchenController::class, 'markOrderReady']);
     Route::post('/kitchen/orders/{order}/call-waiter', [KitchenController::class, 'callWaiter']);
     Route::patch('/kitchen/items/{item}/cooking', [KitchenController::class, 'startCooking']);

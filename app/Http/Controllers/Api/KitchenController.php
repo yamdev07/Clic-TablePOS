@@ -46,12 +46,13 @@ class KitchenController extends Controller
         );
     }
 
-    public function startOrderCooking(Request $request, Order $order)
+       public function startOrderCooking(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
         $this->ensureKitchenRole($request);
 
         $items = DB::transaction(function () use ($order) {
+            // Même ordre de verrous que l'annulation : la commande d'abord, puis ses plats
             $lockedOrder = Order::whereKey($order->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -62,30 +63,26 @@ class KitchenController extends Controller
                 'Seules les commandes en attente de préparation peuvent être lancées.'
             );
 
-            $items = OrderItem::where('order_id', $lockedOrder->id)
+            // Seuls les plats en attente sont lancés : les autres (par exemple une rupture) ne sont pas touchés
+            $pending = OrderItem::where('order_id', $lockedOrder->id)
+                ->where('kitchen_status', 'pending')
                 ->lockForUpdate()
                 ->get();
 
             abort_if(
-                $items->isEmpty(),
+                $pending->isEmpty(),
                 422,
-                'Cette commande ne contient aucun plat.'
+                'Cette commande ne contient aucun plat en attente de préparation.'
             );
 
-            foreach ($items as $item) {
-                abort_unless(
-                    $item->kitchen_status === 'pending',
-                    422,
-                    'La préparation de cette commande a déjà été commencée.'
-                );
-
+            foreach ($pending as $item) {
                 $item->update([
                     'kitchen_status' => 'cooking',
                     'started_at' => $item->started_at ?? now(),
                 ]);
             }
 
-            return $items;
+            return $pending;
         });
 
         foreach ($items as $item) {
