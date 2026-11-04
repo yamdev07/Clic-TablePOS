@@ -301,43 +301,63 @@ class OrderTransitionsTest extends TestCase
             $this->assertSame('served', $order->fresh()->status);
         }
     }
+
     public function test_kitchen_cannot_mark_order_as_served(): void
-{
-    $kitchen = User::factory()->create([
-        'restaurant_id' => $this->restaurant->id,
-        'role' => 'kitchen',
-    ]);
+    {
+        $kitchen = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'kitchen',
+        ]);
 
-    $order = $this->order('ready');
+        $order = $this->order('ready');
 
-    Sanctum::actingAs($kitchen);
+        Sanctum::actingAs($kitchen);
 
-    $this->patchJson("/api/orders/{$order->id}/status", [
-        'status' => 'served',
-    ])->assertForbidden();
+        $this->patchJson("/api/orders/{$order->id}/status", [
+            'status' => 'served',
+        ])->assertForbidden();
 
-    $this->assertSame('ready', $order->fresh()->status);
-}
-public function test_waiter_cannot_mark_another_restaurants_order_as_served(): void
-{
-    $otherRestaurant = Restaurant::factory()->create();
+        $this->assertSame('ready', $order->fresh()->status);
+    }
 
-    $otherOrder = Order::factory()->create([
-        'restaurant_id' => $otherRestaurant->id,
-        'status' => 'ready',
-    ]);
+    public function test_waiter_cannot_mark_another_restaurants_order_as_served(): void
+    {
+        $otherRestaurant = Restaurant::factory()->create();
 
-    $waiter = User::factory()->create([
-        'restaurant_id' => $this->restaurant->id,
-        'role' => 'waiter',
-    ]);
+        $otherOrder = Order::factory()->create([
+            'restaurant_id' => $otherRestaurant->id,
+            'status' => 'ready',
+        ]);
 
-    Sanctum::actingAs($waiter);
+        $waiter = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'waiter',
+        ]);
 
-    $this->patchJson("/api/orders/{$otherOrder->id}/status", [
-        'status' => 'served',
-    ])->assertNotFound();
+        Sanctum::actingAs($waiter);
 
-    $this->assertSame('ready', $otherOrder->fresh()->status);
-}
+        $this->patchJson("/api/orders/{$otherOrder->id}/status", [
+            'status' => 'served',
+        ])->assertNotFound();
+
+        $this->assertSame('ready', $otherOrder->fresh()->status);
+    }
+
+    public function test_waiter_cannot_mark_order_ready_through_general_status_route(): void
+    {
+        $waiter = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'waiter',
+        ]);
+
+        $order = $this->order('in_progress');
+
+        Sanctum::actingAs($waiter);
+
+        $this->patchJson("/api/orders/{$order->id}/status", [
+            'status' => 'ready',
+        ])->assertStatus(422);
+
+        $this->assertSame('in_progress', $order->fresh()->status);
+    }
 }

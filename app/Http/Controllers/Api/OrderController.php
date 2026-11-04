@@ -279,6 +279,17 @@ class OrderController extends Controller
                 'ready' => 'served',
             ];
 
+            if (
+                $order->status === 'in_progress'
+                && $request->status === 'ready'
+                && $request->user()->role !== 'admin'
+            ) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seul l’administrateur peut effectuer cette transition depuis cette route.',
+                ], 422);
+            }
+
             if (($allowedTransitions[$order->status] ?? null) !== $request->status) {
                 $message = $request->status === 'open'
                     ? 'Une commande envoyée en cuisine ne peut pas redevenir ouverte.'

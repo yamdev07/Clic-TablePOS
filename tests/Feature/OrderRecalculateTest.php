@@ -100,6 +100,11 @@ class OrderRecalculateTest extends TestCase
         $this->deleteJson("/api/orders/{$this->order->id}/items/{$itemId}")->assertOk();
 
         $this->assertSame('open', $this->order->fresh()->status);
+        $this->assertEquals(0, $this->order->fresh()->subtotal);
+        $this->assertEquals(0, $this->order->fresh()->tax);
+        $this->assertEquals(0, $this->order->fresh()->service_charge);
+        $this->assertEquals(0, $this->order->fresh()->total);
+        $this->assertEquals(0, $this->order->fresh()->due_amount);
         $this->assertSame('occupied', $this->table->fresh()->status);
         $this->assertSame($this->order->id, $this->table->fresh()->current_order_id);
     }
