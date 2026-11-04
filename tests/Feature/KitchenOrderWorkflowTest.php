@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use App\Events\WaiterCallRequested;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -334,5 +335,100 @@ class KitchenOrderWorkflowTest extends TestCase
                 && $event->oldStatus === 'in_progress'
                 && $event->order->status === 'ready'
         );
+    }
+        private function callUrl(Order $order): string
+    {
+        return "/api/kitchen/orders/{$order->id}/call-waiter";
+    }
+
+    public function test_kitchen_can_call_the_waiter_for_a_ready_order_without_changing_anything(): void
+    {
+        Event::fake([WaiterCallRequested::class]);
+        $this->actingAsRole('kitchen');
+        $order = $this->order('ready', ['ready', 'ready']);
+
+        $this->patchJson($this->readyUrl($order))->assertStatus(422); // déjà prête : le workflow ne rejoue pas
+        $this->postJson($this->callUrl($order))
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertSame('ready', $order->fresh()->status);
+        $this->assertSame(2, $order->items()->where('kitchen_status', 'ready')->count());
+        Event::assertDispatchedTimes(WaiterCallRequested::class, 1);
+    }
+
+    public function test_the_waiter_cannot_be_called_unless_the_order_is_ready(): void
+    {
+        Event::fake([WaiterCallRequested::class]);
+        $this->actingAsRole('kitchen');
+
+        foreach (['open', 'in_progress', 'served', 'paid', 'cancelled'] as $status) {
+            $order = $this->order($status, ['ready']);
+
+            $this->postJson($this->callUrl($order))
+                ->assertStatus(422)
+                ->assertJsonStructure(['message']);
+
+            $this->assertSame($status, $order->fresh()->status);
+        }
+
+        Event::assertNotDispatched(WaiterCallRequested::class);
+    }
+
+    public function test_a_waiter_cannot_call_the_waiter(): void
+    {
+        Event::fake([WaiterCallRequested::class]);
+        $this->actingAsRole('waiter');
+        $order = $this->order('ready', ['ready']);
+
+        $this->postJson($this->callUrl($order))->assertForbidden();
+
+        Event::assertNotDispatched(WaiterCallRequested::class);
+    }
+
+    public function test_kitchen_and_admin_can_call_the_waiter(): void
+    {
+        Event::fake([WaiterCallRequested::class]);
+
+        foreach (['kitchen', 'admin'] as $role) {
+            $this->actingAsRole($role);
+            $order = $this->order('ready', ['ready']);
+
+            $this->postJson($this->callUrl($order))->assertOk();
+        }
+
+        Event::assertDispatchedTimes(WaiterCallRequested::class, 2);
+    }
+
+    public function test_the_waiter_cannot_be_called_for_an_order_of_another_restaurant(): void
+    {
+        Event::fake([WaiterCallRequested::class]);
+        $this->actingAsRole('kitchen');
+        $foreign = $this->order('ready', ['ready'], Restaurant::factory()->create());
+
+        $this->postJson($this->callUrl($foreign))->assertNotFound();
+
+        Event::assertNotDispatched(WaiterCallRequested::class);
+    }
+
+    public function test_the_waiter_call_event_targets_the_restaurant_channel_without_amounts(): void
+    {
+        $order = $this->order('ready', ['ready']);
+        $event = new WaiterCallRequested($order);
+
+        $channels = collect((array) $event->broadcastOn())->map(fn ($channel) => $channel->name)->all();
+
+        $this->assertSame(['private-restaurant.'.$this->restaurant->id], $channels);
+        $this->assertSame('waiter.call.requested', $event->broadcastAs());
+
+        $payload = $event->broadcastWith();
+        $json = json_encode($payload);
+
+        $this->assertStringContainsString($order->id, $json);
+        $this->assertStringContainsString($order->order_number, $json);
+
+        foreach (['total', 'subtotal', 'due_amount', 'paid_amount'] as $key) {
+            $this->assertArrayNotHasKey($key, $payload);
+        }
     }
 }
