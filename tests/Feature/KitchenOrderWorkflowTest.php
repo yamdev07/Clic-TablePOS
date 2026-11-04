@@ -256,8 +256,8 @@ class KitchenOrderWorkflowTest extends TestCase
                 ->assertJsonStructure(['message']);
 
             $this->assertSame('in_progress', $order->fresh()->status);
-                        $this->assertSame(0, $order->items()->where('kitchen_status', 'ready')->count());
-            $this->assertSame(
+            $this->assertSame(0, $order->items()->where('kitchen_status', 'ready')->count());
+            $this->assertEquals(
                 collect($itemStatuses)->countBy()->all(),
                 $order->items()->pluck('kitchen_status')->countBy()->all()
             );

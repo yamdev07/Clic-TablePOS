@@ -205,7 +205,7 @@ class KitchenTest extends TestCase
     }
 
     /** @test */
-    public function kitchen_can_mark_all_order_items_ready_even_if_some_are_pending(): void
+    public function kitchen_can_mark_all_order_items_ready(): void
     {
         $secondItem = OrderItem::create([
             'id' => (string) Str::uuid(),
@@ -217,9 +217,8 @@ class KitchenTest extends TestCase
             'total_price' => 1500,
             'kitchen_status' => 'cooking',
         ]);
-
-        // Le premier plat est encore pending (case non cochée).
-        // Le deuxième est déjà en préparation.
+        // Les deux plats sont en préparation.
+        $this->item->update(['kitchen_status' => 'cooking']);
 
         $response = $this->patchJson(
             "/api/kitchen/orders/{$this->order->id}/ready"

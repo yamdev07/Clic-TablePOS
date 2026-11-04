@@ -46,7 +46,7 @@ class KitchenController extends Controller
         );
     }
 
-       public function startOrderCooking(Request $request, Order $order)
+    public function startOrderCooking(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
         $this->ensureKitchenRole($request);
@@ -120,13 +120,23 @@ class KitchenController extends Controller
                 ->lockForUpdate()
                 ->get();
 
+            // La préparation doit avoir été lancée pour tous les plats
             abort_if(
-                $items->isEmpty(),
+                $items->contains(fn ($item) => $item->kitchen_status === 'pending'),
                 422,
-                'Cette commande ne contient aucun plat.'
+                "La préparation n'est pas lancée pour tous les plats de cette commande."
             );
 
-            foreach ($items as $item) {
+            // Seuls les plats en cuisson deviennent prêts : les autres (une rupture) ne sont pas touchés
+            $cooking = $items->where('kitchen_status', 'cooking');
+
+            abort_if(
+                $cooking->isEmpty(),
+                422,
+                'Cette commande ne contient aucun plat en cours de préparation.'
+            );
+
+            foreach ($cooking as $item) {
                 $item->update([
                     'kitchen_status' => 'ready',
                     'ready_at' => $item->ready_at ?? now(),
@@ -139,7 +149,7 @@ class KitchenController extends Controller
                 'status' => 'ready',
             ]);
 
-            return [$items, $oldStatus];
+            return [$cooking, $oldStatus];
         });
 
         foreach ($items as $item) {
