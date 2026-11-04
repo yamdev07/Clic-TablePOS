@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Events\OrderStatusChanged;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -193,5 +195,144 @@ class KitchenOrderWorkflowTest extends TestCase
         $this->patchJson($this->startUrl($foreign))->assertNotFound();
 
         $this->assertSame('pending', $foreign->items()->first()->kitchen_status);
+    }
+
+    private function readyUrl(Order $order): string
+    {
+        return "/api/kitchen/orders/{$order->id}/ready";
+    }
+
+    public function test_kitchen_can_mark_the_whole_order_ready(): void
+    {
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['cooking', 'cooking']);
+
+        $this->patchJson($this->readyUrl($order))->assertOk();
+
+        foreach ($order->items()->get() as $item) {
+            $this->assertSame('ready', $item->kitchen_status);
+            $this->assertNotNull($item->ready_at);
+        }
+        $this->assertSame('ready', $order->fresh()->status);
+    }
+
+    public function test_an_existing_ready_at_is_not_overwritten(): void
+    {
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['cooking']);
+        $item = $order->items()->first();
+        $earlier = now()->subHour()->startOfSecond();
+        $item->forceFill(['ready_at' => $earlier])->save();
+
+        $this->patchJson($this->readyUrl($order))->assertOk();
+
+        $this->assertTrue($item->fresh()->ready_at->equalTo($earlier));
+    }
+
+    public function test_only_cooking_items_are_marked_ready(): void
+    {
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['cooking', 'served']);
+
+        $this->patchJson($this->readyUrl($order))->assertOk();
+
+        $this->assertSame(1, $order->items()->where('kitchen_status', 'ready')->count());
+        $served = $order->items()->where('kitchen_status', 'served')->first();
+        $this->assertNotNull($served);
+        $this->assertNull($served->ready_at);
+        $this->assertSame('ready', $order->fresh()->status);
+    }
+
+    public function test_an_order_cannot_be_marked_ready_while_items_are_still_pending(): void
+    {
+        $this->actingAsRole('kitchen');
+
+        // préparation lancée pour un seul plat, ou pas lancée du tout
+        foreach ([['cooking', 'pending'], ['pending', 'pending']] as $itemStatuses) {
+            $order = $this->order('in_progress', $itemStatuses);
+
+            $this->patchJson($this->readyUrl($order))
+                ->assertStatus(422)
+                ->assertJsonStructure(['message']);
+
+            $this->assertSame('in_progress', $order->fresh()->status);
+                        $this->assertSame(0, $order->items()->where('kitchen_status', 'ready')->count());
+            $this->assertSame(
+                collect($itemStatuses)->countBy()->all(),
+                $order->items()->pluck('kitchen_status')->countBy()->all()
+            );
+        }
+    }
+
+    public function test_an_order_that_is_not_in_progress_cannot_be_marked_ready(): void
+    {
+        $this->actingAsRole('kitchen');
+
+        foreach (['open', 'ready', 'served', 'paid', 'cancelled'] as $status) {
+            $order = $this->order($status, ['cooking']);
+
+            $this->patchJson($this->readyUrl($order))->assertStatus(422);
+
+            $this->assertSame($status, $order->fresh()->status, "commande {$status}");
+            $this->assertSame('cooking', $order->items()->first()->kitchen_status, "commande {$status}");
+        }
+    }
+
+    public function test_an_order_without_cooking_items_cannot_be_marked_ready(): void
+    {
+        $this->actingAsRole('kitchen');
+
+        $onlyServed = $this->order('in_progress', ['served']);
+        $this->patchJson($this->readyUrl($onlyServed))->assertStatus(422);
+
+        $empty = $this->order('in_progress', []);
+        $this->patchJson($this->readyUrl($empty))->assertStatus(422);
+
+        $this->assertSame('in_progress', $onlyServed->fresh()->status);
+        $this->assertSame('in_progress', $empty->fresh()->status);
+    }
+
+    public function test_only_kitchen_and_admin_can_mark_an_order_ready(): void
+    {
+        $this->actingAsRole('waiter');
+        $refused = $this->order('in_progress', ['cooking']);
+        $this->patchJson($this->readyUrl($refused))->assertForbidden();
+        $this->assertSame('in_progress', $refused->fresh()->status);
+
+        foreach (['kitchen', 'admin'] as $role) {
+            $this->actingAsRole($role);
+            $order = $this->order('in_progress', ['cooking']);
+
+            $this->patchJson($this->readyUrl($order))->assertOk();
+            $this->assertSame('ready', $order->fresh()->status, "rôle {$role}");
+        }
+    }
+
+    public function test_an_order_of_another_restaurant_cannot_be_marked_ready(): void
+    {
+        $this->actingAsRole('kitchen');
+        $foreign = $this->order('in_progress', ['cooking'], Restaurant::factory()->create());
+
+        $this->patchJson($this->readyUrl($foreign))->assertNotFound();
+
+        $this->assertSame('in_progress', $foreign->fresh()->status);
+        $this->assertSame('cooking', $foreign->items()->first()->kitchen_status);
+    }
+
+    public function test_marking_ready_broadcasts_the_order_status_change_once(): void
+    {
+        Event::fake([OrderStatusChanged::class]);
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['cooking', 'cooking']);
+
+        $this->patchJson($this->readyUrl($order))->assertOk();
+
+        Event::assertDispatchedTimes(OrderStatusChanged::class, 1);
+        Event::assertDispatched(
+            OrderStatusChanged::class,
+            fn ($event) => $event->order->id === $order->id
+                && $event->oldStatus === 'in_progress'
+                && $event->order->status === 'ready'
+        );
     }
 }
