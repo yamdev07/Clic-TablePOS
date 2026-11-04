@@ -10,6 +10,8 @@ use Illuminate\Support\Str;
 
 class Order extends Model
 {
+        /** Une commande open est un brouillon : elle n'est pas active. */
+    public const ACTIVE_STATUSES = ['in_progress', 'ready', 'served'];
     use HasFactory;
 
     public $incrementing = false;
@@ -101,23 +103,9 @@ class Order extends Model
             'due_amount' => $due,
         ]);
 
-        if ($total > 0 && $due <= 0 && $this->status !== 'paid') {
+              if ($total > 0 && $due <= 0 && $this->status !== 'paid') {
             $this->update(['status' => 'paid']);
-
-            $table = $this->table()->first();
-
-            if ($table) {
-                $hasActiveOrders = Order::where('table_id', $table->id)
-                    ->whereNotIn('status', ['paid', 'cancelled'])
-                    ->exists();
-
-                if (! $hasActiveOrders) {
-                    $table->update([
-                        'status' => 'free',
-                        'current_order_id' => null,
-                    ]);
-                }
-            }
+            $this->table()->first()?->syncCurrentOrder();
         }
     }
 }

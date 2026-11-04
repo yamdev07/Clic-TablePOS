@@ -197,6 +197,7 @@ class OrderController extends Controller
         $this->ensureOrderCanBeSent($order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
+                        $order->table?->syncCurrentOrder();
 
             foreach ($order->items as $item) {
                 $item->update(['kitchen_status' => 'pending']);
@@ -226,6 +227,7 @@ class OrderController extends Controller
         $this->ensureOrderCanBeSent($order);
         try {
             $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
+                        $order->table?->syncCurrentOrder();
 
             $this->tryBroadcast(fn () => broadcast(new NewOrderReceived($order))->toOthers());
 
@@ -325,21 +327,8 @@ class OrderController extends Controller
                 return "Impossible d'annuler cette commande : la préparation d'au moins un plat a déjà commencé.";
             }
 
-            $locked->update(['status' => 'cancelled']);
-            $table = $locked->table;
-
-            if ($table) {
-                $hasActiveOrders = Order::where('table_id', $table->id)
-                    ->whereNotIn('status', ['paid', 'cancelled'])
-                    ->exists();
-
-                if (! $hasActiveOrders) {
-                    $table->update([
-                        'status' => 'free',
-                        'current_order_id' => null,
-                    ]);
-                }
-            }
+                       $locked->update(['status' => 'cancelled']);
+            $locked->table?->syncCurrentOrder();
 
             return null;
         });
