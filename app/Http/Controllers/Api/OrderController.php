@@ -20,6 +20,8 @@ class OrderController extends Controller
 {
     private const CANCEL_ROLES = ['admin', 'manager', 'waiter'];
 
+    private const STATUS_ROLES = ['admin', 'manager', 'waiter'];
+
     private function ensureOrderBelongsToRestaurant(
         Request $request,
         Order $order
@@ -245,6 +247,11 @@ class OrderController extends Controller
     public function updateStatus(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
+        abort_unless(
+            in_array($request->user()->role, self::STATUS_ROLES, true),
+            403,
+            "Le cuisinier ne peut pas modifier directement le statut global d'une commande."
+        );
         if ($request->input('status') === 'cancelled') {
             return $this->cancelOrder($request, $order);
         }
@@ -282,9 +289,17 @@ class OrderController extends Controller
                     'message' => $message,
                 ], 422);
             }
-
             $oldStatus = $order->status;
-            $order->update(['status' => $request->status]);
+
+            DB::transaction(function () use ($order, $request) {
+                $order->update(['status' => $request->status]);
+
+                if ($request->status === 'served') {
+                    $order->items()->update([
+                        'kitchen_status' => 'served',
+                    ]);
+                }
+            });
 
             if (in_array($request->status, ['paid', 'cancelled']) && $order->table) {
                 $order->table->update(['status' => 'free', 'current_order_id' => null]);

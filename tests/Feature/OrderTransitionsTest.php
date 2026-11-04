@@ -168,6 +168,56 @@ class OrderTransitionsTest extends TestCase
         $this->assertSame('served', $order->fresh()->status);
     }
 
+    public function test_waiter_can_mark_order_and_all_items_as_served(): void
+    {
+        $order = $this->order('ready');
+
+        $firstItem = OrderItem::create([
+            'id' => (string) Str::uuid(),
+            'order_id' => $order->id,
+            'menu_item_id' => $this->dish->id,
+            'item_name' => $this->dish->name,
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'total_price' => 1000,
+            'kitchen_status' => 'ready',
+        ]);
+
+        $secondItem = OrderItem::create([
+            'id' => (string) Str::uuid(),
+            'order_id' => $order->id,
+            'menu_item_id' => $this->dish->id,
+            'item_name' => $this->dish->name,
+            'quantity' => 2,
+            'unit_price' => 1000,
+            'total_price' => 2000,
+            'kitchen_status' => 'ready',
+        ]);
+
+        $waiter = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'waiter',
+        ]);
+
+        Sanctum::actingAs($waiter);
+
+        $this->patchJson("/api/orders/{$order->id}/status", [
+            'status' => 'served',
+        ])->assertOk();
+
+        $this->assertSame('served', $order->fresh()->status);
+
+        $this->assertSame(
+            'served',
+            $firstItem->fresh()->kitchen_status
+        );
+
+        $this->assertSame(
+            'served',
+            $secondItem->fresh()->kitchen_status
+        );
+    }
+
     public function test_order_status_transitions_cannot_skip_or_reverse_steps(): void
     {
         $invalidTransitions = [
@@ -213,4 +263,81 @@ class OrderTransitionsTest extends TestCase
 
         $this->assertDatabaseCount('payments', 0);
     }
+
+    public function test_kitchen_cannot_update_global_order_status_directly(): void
+    {
+        $kitchen = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'kitchen',
+        ]);
+
+        $order = $this->order('open');
+
+        Sanctum::actingAs($kitchen);
+
+        $this->patchJson("/api/orders/{$order->id}/status", [
+            'status' => 'in_progress',
+        ])->assertForbidden();
+
+        $this->assertSame('open', $order->fresh()->status);
+    }
+
+    public function test_admin_and_manager_can_mark_order_as_served(): void
+    {
+        $manager = User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'manager',
+        ]);
+
+        foreach ([$this->admin, $manager] as $user) {
+            $order = $this->order('ready');
+
+            Sanctum::actingAs($user);
+
+            $this->patchJson("/api/orders/{$order->id}/status", [
+                'status' => 'served',
+            ])->assertOk();
+
+            $this->assertSame('served', $order->fresh()->status);
+        }
+    }
+    public function test_kitchen_cannot_mark_order_as_served(): void
+{
+    $kitchen = User::factory()->create([
+        'restaurant_id' => $this->restaurant->id,
+        'role' => 'kitchen',
+    ]);
+
+    $order = $this->order('ready');
+
+    Sanctum::actingAs($kitchen);
+
+    $this->patchJson("/api/orders/{$order->id}/status", [
+        'status' => 'served',
+    ])->assertForbidden();
+
+    $this->assertSame('ready', $order->fresh()->status);
+}
+public function test_waiter_cannot_mark_another_restaurants_order_as_served(): void
+{
+    $otherRestaurant = Restaurant::factory()->create();
+
+    $otherOrder = Order::factory()->create([
+        'restaurant_id' => $otherRestaurant->id,
+        'status' => 'ready',
+    ]);
+
+    $waiter = User::factory()->create([
+        'restaurant_id' => $this->restaurant->id,
+        'role' => 'waiter',
+    ]);
+
+    Sanctum::actingAs($waiter);
+
+    $this->patchJson("/api/orders/{$otherOrder->id}/status", [
+        'status' => 'served',
+    ])->assertNotFound();
+
+    $this->assertSame('ready', $otherOrder->fresh()->status);
+}
 }

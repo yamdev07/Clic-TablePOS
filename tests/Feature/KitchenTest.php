@@ -17,10 +17,13 @@ class KitchenTest extends TestCase
 {
     use RefreshDatabase;
 
-    private User      $kitchenUser;
-    private Order     $order;
+    private User $kitchenUser;
+
+    private Order $order;
+
     private OrderItem $item;
-    private MenuItem  $menuItem;
+
+    private MenuItem $menuItem;
 
     protected function setUp(): void
     {
@@ -30,37 +33,37 @@ class KitchenTest extends TestCase
 
         $this->kitchenUser = User::factory()->create([
             'restaurant_id' => $restaurant->id,
-            'role'          => 'kitchen',
+            'role' => 'kitchen',
         ]);
 
         $table = Table::factory()->create([
             'restaurant_id' => $restaurant->id,
-            'status'        => 'occupied',
+            'status' => 'occupied',
         ]);
 
         $this->menuItem = MenuItem::factory()->create([
             'restaurant_id' => $restaurant->id,
-            'name'          => 'Poulet braisé',
-            'price'         => 3500,
-            'is_available'  => true,
+            'name' => 'Poulet braisé',
+            'price' => 3500,
+            'is_available' => true,
         ]);
 
         $this->order = Order::create([
-            'id'            => (string) Str::uuid(),
+            'id' => (string) Str::uuid(),
             'restaurant_id' => $restaurant->id,
-            'table_id'      => $table->id,
-            'user_id'       => $this->kitchenUser->id,
-            'status'        => 'in_progress',
+            'table_id' => $table->id,
+            'user_id' => $this->kitchenUser->id,
+            'status' => 'in_progress',
         ]);
 
         $this->item = OrderItem::create([
-            'id'             => (string) Str::uuid(),
-            'order_id'       => $this->order->id,
-            'menu_item_id'   => $this->menuItem->id,
-            'item_name'      => 'Poulet braisé',
-            'quantity'       => 2,
-            'unit_price'     => 3500,
-            'total_price'    => 7000,
+            'id' => (string) Str::uuid(),
+            'order_id' => $this->order->id,
+            'menu_item_id' => $this->menuItem->id,
+            'item_name' => 'Poulet braisé',
+            'quantity' => 2,
+            'unit_price' => 3500,
+            'total_price' => 7000,
             'kitchen_status' => 'pending',
         ]);
 
@@ -74,7 +77,7 @@ class KitchenTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertDatabaseHas('order_items', [
-            'id'             => $this->item->id,
+            'id' => $this->item->id,
             'kitchen_status' => 'cooking',
         ]);
     }
@@ -88,7 +91,7 @@ class KitchenTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertDatabaseHas('order_items', [
-            'id'             => $this->item->id,
+            'id' => $this->item->id,
             'kitchen_status' => 'ready',
         ]);
     }
@@ -102,7 +105,7 @@ class KitchenTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertDatabaseHas('order_items', [
-            'id'             => $this->item->id,
+            'id' => $this->item->id,
             'kitchen_status' => 'served',
         ]);
     }
@@ -116,13 +119,13 @@ class KitchenTest extends TestCase
 
         // Le menu item doit être marqué indisponible
         $this->assertDatabaseHas('menu_items', [
-            'id'           => $this->menuItem->id,
+            'id' => $this->menuItem->id,
             'is_available' => false,
         ]);
 
         // L'item de commande doit être retiré de la queue
         $this->assertDatabaseHas('order_items', [
-            'id'             => $this->item->id,
+            'id' => $this->item->id,
             'kitchen_status' => 'served',
         ]);
     }
@@ -132,24 +135,24 @@ class KitchenTest extends TestCase
     {
         // Créer un item en cuisson et un item prêt
         $cookingItem = OrderItem::create([
-            'id'             => (string) Str::uuid(),
-            'order_id'       => $this->order->id,
-            'menu_item_id'   => $this->menuItem->id,
-            'item_name'      => 'Riz sauce',
-            'quantity'       => 1,
-            'unit_price'     => 2000,
-            'total_price'    => 2000,
+            'id' => (string) Str::uuid(),
+            'order_id' => $this->order->id,
+            'menu_item_id' => $this->menuItem->id,
+            'item_name' => 'Riz sauce',
+            'quantity' => 1,
+            'unit_price' => 2000,
+            'total_price' => 2000,
             'kitchen_status' => 'cooking',
         ]);
 
         $readyItem = OrderItem::create([
-            'id'             => (string) Str::uuid(),
-            'order_id'       => $this->order->id,
-            'menu_item_id'   => $this->menuItem->id,
-            'item_name'      => 'Alloco',
-            'quantity'       => 1,
-            'unit_price'     => 1500,
-            'total_price'    => 1500,
+            'id' => (string) Str::uuid(),
+            'order_id' => $this->order->id,
+            'menu_item_id' => $this->menuItem->id,
+            'item_name' => 'Alloco',
+            'quantity' => 1,
+            'unit_price' => 1500,
+            'total_price' => 1500,
             'kitchen_status' => 'ready',
         ]);
 
@@ -175,28 +178,95 @@ class KitchenTest extends TestCase
         $found = collect($response->json())->firstWhere('id', $this->item->id);
         $this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
     }
+
     /** @test */
-public function starting_cooking_records_started_at(): void
-{
-    $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
-        ->assertStatus(200);
+    public function starting_cooking_records_started_at(): void
+    {
+        $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
+            ->assertStatus(200);
 
-    $this->assertNotNull($this->item->fresh()->started_at);
-}
+        $this->assertNotNull($this->item->fresh()->started_at);
+    }
 
-/** @test */
-public function starting_cooking_twice_keeps_the_first_started_at(): void
-{
-    $this->travelTo(now()->setTime(12, 10));
-    $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
-        ->assertStatus(200);
-    $first = $this->item->fresh()->started_at;
+    /** @test */
+    public function starting_cooking_twice_keeps_the_first_started_at(): void
+    {
+        $this->travelTo(now()->setTime(12, 10));
+        $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
+            ->assertStatus(200);
+        $first = $this->item->fresh()->started_at;
 
-    $this->travelTo(now()->setTime(12, 25));
-    $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
-        ->assertStatus(200);
+        $this->travelTo(now()->setTime(12, 25));
+        $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
+            ->assertStatus(200);
 
-    $this->assertNotNull($first);
-    $this->assertEquals($first, $this->item->fresh()->started_at);
-}
+        $this->assertNotNull($first);
+        $this->assertEquals($first, $this->item->fresh()->started_at);
+    }
+
+    /** @test */
+    public function kitchen_can_mark_all_order_items_ready_even_if_some_are_pending(): void
+    {
+        $secondItem = OrderItem::create([
+            'id' => (string) Str::uuid(),
+            'order_id' => $this->order->id,
+            'menu_item_id' => $this->menuItem->id,
+            'item_name' => 'Alloco',
+            'quantity' => 1,
+            'unit_price' => 1500,
+            'total_price' => 1500,
+            'kitchen_status' => 'cooking',
+        ]);
+
+        // Le premier plat est encore pending (case non cochée).
+        // Le deuxième est déjà en préparation.
+
+        $response = $this->patchJson(
+            "/api/kitchen/orders/{$this->order->id}/ready"
+        );
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('order_items', [
+            'id' => $this->item->id,
+            'kitchen_status' => 'ready',
+        ]);
+
+        $this->assertDatabaseHas('order_items', [
+            'id' => $secondItem->id,
+            'kitchen_status' => 'ready',
+        ]);
+
+        $this->assertSame('ready', $this->order->fresh()->status);
+
+        $this->assertNotNull($this->item->fresh()->ready_at);
+        $this->assertNotNull($secondItem->fresh()->ready_at);
+    }
+
+    /** @test */
+    public function kitchen_can_call_waiter_without_changing_order_status(): void
+    {
+        $this->order->update(['status' => 'ready']);
+        $this->item->update(['kitchen_status' => 'ready']);
+
+        $response = $this->postJson(
+            "/api/kitchen/orders/{$this->order->id}/call-waiter"
+        );
+
+        $response->assertOk();
+
+        $response->assertJson([
+            'success' => true,
+        ]);
+
+        $this->assertSame(
+            'ready',
+            $this->order->fresh()->status
+        );
+
+        $this->assertSame(
+            'ready',
+            $this->item->fresh()->kitchen_status
+        );
+    }
 }
