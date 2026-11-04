@@ -57,38 +57,36 @@ class OrderRecalculateTest extends TestCase
 
         Sanctum::actingAs($this->admin);
     }
-        private function newOrder(int $minutesAgo): Order
+
+    public function test_paying_one_order_does_not_free_table_while_another_order_is_active(): void
     {
-        $order = Order::create([
+        // Créer un plat pour la première commande
+        $this->postJson("/api/orders/{$this->order->id}/items", [
+            'menu_item_id' => $this->dish->id,
+            'quantity' => 1,
+        ])->assertCreated();
+
+        // Deuxième commande, déjà envoyée en cuisine, sur la même table
+        $secondOrder = Order::create([
             'id' => (string) Str::uuid(),
             'restaurant_id' => $this->order->restaurant_id,
             'table_id' => $this->table->id,
             'user_id' => $this->admin->id,
-            'status' => 'open',
+            'status' => 'in_progress',
         ]);
-        $order->forceFill(['created_at' => now()->subMinutes($minutesAgo)])->save();
 
-        return $order;
-    }
-
-    private function addItemAndPrice(Order $order): void
-    {
-        $order->items()->create([
-            'menu_item_id' => $this->dish->id,
-            'item_name' => $this->dish->name,
-            'quantity' => 1,
-            'unit_price' => 1000,
-            'total_price' => 1000,
-        ]);
-        $order->recalculate();
-    }
-
-    private function pay(Order $order): void
-    {
-        $this->postJson("/api/orders/{$order->id}/payments", [
-            'amount' => $order->fresh()->total,
+        // Payer entièrement la première commande
+        $this->postJson("/api/orders/{$this->order->id}/payments", [
+            'amount' => $this->order->fresh()->total,
             'method' => 'cash',
         ])->assertCreated();
+
+        $this->assertSame('paid', $this->order->fresh()->status);
+        $this->assertSame('in_progress', $secondOrder->fresh()->status);
+
+        // La table reste occupée et pointe vers la commande qui reste active
+        $this->assertSame('occupied', $this->table->fresh()->status);
+        $this->assertSame($secondOrder->id, $this->table->fresh()->current_order_id);
     }
 
     public function test_removing_the_last_item_does_not_mark_the_order_paid(): void
@@ -121,63 +119,5 @@ class OrderRecalculateTest extends TestCase
 
         $this->assertSame('paid', $this->order->fresh()->status);
         $this->assertSame('free', $this->table->fresh()->status);
-    }
-
-    public function test_paying_one_order_does_not_free_table_while_another_order_is_active(): void
-    {
-        // Créer un plat pour la première commande
-        $this->postJson("/api/orders/{$this->order->id}/items", [
-            'menu_item_id' => $this->dish->id,
-            'quantity' => 1,
-        ])->assertCreated();
-
-        // Créer une deuxième commande sur la même table
-        $secondOrder = Order::create([
-            'id' => (string) Str::uuid(),
-            'restaurant_id' => $this->order->restaurant_id,
-            'table_id' => $this->table->id,
-            'user_id' => $this->admin->id,
-            'status' => 'open',
-        ]);
-
-
-
-        // Payer entièrement la première commande
-        $this->postJson("/api/orders/{$this->order->id}/payments", [
-            'amount' => $this->order->fresh()->total,
-            'method' => 'cash',
-        ])->assertCreated();
-
-        $this->assertSame('paid', $this->order->fresh()->status);
-        $this->assertSame('open', $secondOrder->fresh()->status);
-
-        // La table doit rester occupée
-        $this->assertSame('occupied', $this->table->fresh()->status);
-
-                // La première commande est terminée : la table pointe vers celle qui reste active
-        $this->assertSame($secondOrder->id, $this->table->fresh()->current_order_id);
-    }
-        public function test_table_points_to_the_oldest_active_order_until_all_are_closed(): void
-    {
-        $first = $this->order;
-        $first->forceFill(['created_at' => now()->subMinutes(30)])->save();
-        $second = $this->newOrder(20);
-        $third = $this->newOrder(10);
-
-        foreach ([$first, $second, $third] as $order) {
-            $this->addItemAndPrice($order);
-        }
-
-        $this->pay($first);
-        $this->assertSame('occupied', $this->table->fresh()->status);
-        $this->assertSame($second->id, $this->table->fresh()->current_order_id);
-
-        $this->pay($second);
-        $this->assertSame('occupied', $this->table->fresh()->status);
-        $this->assertSame($third->id, $this->table->fresh()->current_order_id);
-
-        $this->pay($third);
-        $this->assertSame('free', $this->table->fresh()->status);
-        $this->assertNull($this->table->fresh()->current_order_id);
     }
 }

@@ -130,17 +130,15 @@ class OrderCancellationTest extends TestCase
             'user_id' => User::factory()->create([
                 'restaurant_id' => $this->restaurant->id,
             ])->id,
-            'status' => 'open',
+            'status' => 'in_progress',
         ]);
-
-        $firstOrderId = $firstOrder->id;
 
         $this->cancel($firstOrder, 'cancel')->assertOk();
 
         $this->assertSame('cancelled', $firstOrder->fresh()->status);
-        $this->assertSame('open', $secondOrder->fresh()->status);
+        $this->assertSame('in_progress', $secondOrder->fresh()->status);
         $this->assertSame('occupied', $this->table->fresh()->status);
-        $this->assertSame($firstOrderId, $this->table->fresh()->current_order_id);
+        $this->assertSame($secondOrder->id, $this->table->fresh()->current_order_id);
     }
 
     public function test_waiter_manager_and_admin_can_cancel(): void
