@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\KitchenOrderUpdated;
 use App\Events\NewOrderReceived;
 use App\Events\OrderCancelled;
 use App\Events\OrderStatusChanged;
@@ -315,7 +316,19 @@ class OrderController extends Controller
                 $order->table->update(['status' => 'free', 'current_order_id' => null]);
             }
 
-            $this->tryBroadcast(fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers());
+            $order->refresh();
+
+            if ($request->status === 'served') {
+                $this->tryBroadcast(
+                    fn () => broadcast(
+                        new KitchenOrderUpdated($order->fresh(['items', 'table']))
+                    )->toOthers()
+                );
+            }
+
+            $this->tryBroadcast(
+                fn () => broadcast(new OrderStatusChanged($order, $oldStatus))->toOthers()
+            );
 
             LogService::log($request, 'order.status_updated',
                 "Commande #{$order->order_number} : {$oldStatus} → {$request->status}",

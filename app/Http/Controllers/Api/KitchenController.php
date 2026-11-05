@@ -4,6 +4,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\KitchenOrderUpdated;
 use App\Events\OrderItemStatusChanged;
 use App\Events\OrderStatusChanged;
 use App\Events\WaiterCallRequested;
@@ -26,7 +27,7 @@ class KitchenController extends Controller
         );
     }
 
-       private function ensureKitchenRole(Request $request): void
+    private function ensureKitchenRole(Request $request): void
     {
         abort_unless(
             in_array($request->user()->role, ['admin', 'manager', 'kitchen'], true),
@@ -85,13 +86,13 @@ class KitchenController extends Controller
             return $pending;
         });
 
-        foreach ($items as $item) {
-            $this->tryBroadcast(
-                fn () => broadcast(
-                    new OrderItemStatusChanged($item->load('order.table'))
-                )->toOthers()
-            );
-        }
+        $order->refresh();
+
+        $this->tryBroadcast(
+            fn () => broadcast(
+                new KitchenOrderUpdated($order->fresh(['items', 'table']))
+            )->toOthers()
+        );
 
         return response()->json([
             'success' => true,
@@ -152,15 +153,13 @@ class KitchenController extends Controller
             return [$cooking, $oldStatus];
         });
 
-        foreach ($items as $item) {
-            $this->tryBroadcast(
-                fn () => broadcast(
-                    new OrderItemStatusChanged($item->load('order.table'))
-                )->toOthers()
-            );
-        }
-
         $order->refresh();
+
+        $this->tryBroadcast(
+            fn () => broadcast(
+                new KitchenOrderUpdated($order->fresh(['items', 'table']))
+            )->toOthers()
+        );
 
         $this->tryBroadcast(
             fn () => broadcast(
