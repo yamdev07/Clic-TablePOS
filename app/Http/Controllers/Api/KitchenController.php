@@ -26,12 +26,12 @@ class KitchenController extends Controller
         );
     }
 
-    private function ensureKitchenRole(Request $request): void
+       private function ensureKitchenRole(Request $request): void
     {
         abort_unless(
-            in_array($request->user()->role, ['admin', 'kitchen'], true),
+            in_array($request->user()->role, ['admin', 'manager', 'kitchen'], true),
             403,
-            "Seuls le cuisinier et l'administrateur peuvent effectuer cette action."
+            "Seuls le cuisinier, le gérant et l'administrateur peuvent effectuer cette action."
         );
     }
 

@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Broadcast;
 | private-restaurant.{restaurantId}
 |   → admins, managers et serveurs du restaurant (données commandes / paiements)
 |
-| private-kitchen.{restaurantId}
-|   → cuisiniers et admins du restaurant (flux KDS)
+|  private-kitchen.{restaurantId}
+|   → cuisiniers, managers et admins du restaurant (flux KDS)
 |
 */
 
@@ -24,7 +24,7 @@ Broadcast::channel('restaurant.{restaurantId}', function ($user, string $restaur
 
 Broadcast::channel('kitchen.{restaurantId}', function ($user, string $restaurantId) {
     return $user->restaurant_id == $restaurantId
-        && in_array($user->role, ['admin', 'kitchen']);
+        && in_array($user->role, ['admin','manager', 'kitchen']);
 });
 Broadcast::channel('dashboard.{restaurantId}', function ($user, string $restaurantId) {
     return $user->restaurant_id == $restaurantId
