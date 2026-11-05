@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Events\KitchenOrderUpdated;
+use App\Events\OrderItemStatusChanged;
 use App\Events\OrderStatusChanged;
 use App\Events\WaiterCallRequested;
 use App\Models\MenuItem;
@@ -430,6 +432,107 @@ class KitchenOrderWorkflowTest extends TestCase
 
         foreach (['total', 'subtotal', 'due_amount', 'paid_amount'] as $key) {
             $this->assertArrayNotHasKey($key, $payload);
+        }
+    }
+
+    public function test_starting_the_order_sends_one_kitchen_event_instead_of_one_per_item(): void
+    {
+        Event::fake([KitchenOrderUpdated::class, OrderItemStatusChanged::class]);
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['pending', 'pending', 'pending']);
+
+        $this->patchJson($this->startUrl($order))->assertOk();
+
+        Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
+        Event::assertDispatched(KitchenOrderUpdated::class, fn ($event) => $event->order->id === $order->id);
+        Event::assertNotDispatched(OrderItemStatusChanged::class);
+    }
+
+    public function test_marking_ready_sends_one_kitchen_event_and_still_tells_the_waiters(): void
+    {
+        Event::fake([KitchenOrderUpdated::class, OrderItemStatusChanged::class, OrderStatusChanged::class]);
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['cooking', 'cooking']);
+
+        $this->patchJson($this->readyUrl($order))->assertOk();
+
+        Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
+        Event::assertDispatchedTimes(OrderStatusChanged::class, 1);
+        Event::assertNotDispatched(OrderItemStatusChanged::class);
+    }
+
+    public function test_confirming_the_service_tells_the_kitchen(): void
+    {
+        Event::fake([KitchenOrderUpdated::class, OrderStatusChanged::class]);
+        $this->actingAsRole('waiter');
+        $order = $this->order('ready', ['ready', 'ready']);
+
+        $this->patchJson("/api/orders/{$order->id}/status", ['status' => 'served'])->assertOk();
+
+        $this->assertSame('served', $order->fresh()->status);
+        Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
+        Event::assertDispatched(KitchenOrderUpdated::class, fn ($event) => $event->order->id === $order->id);
+        Event::assertDispatchedTimes(OrderStatusChanged::class, 1);
+    }
+
+    public function test_calling_the_waiter_does_not_send_a_kitchen_event(): void
+    {
+        Event::fake([KitchenOrderUpdated::class, WaiterCallRequested::class]);
+        $this->actingAsRole('kitchen');
+        $order = $this->order('ready', ['ready']);
+
+        $this->postJson($this->callUrl($order))->assertOk();
+
+        Event::assertDispatchedTimes(WaiterCallRequested::class, 1);
+        Event::assertNotDispatched(KitchenOrderUpdated::class);
+    }
+
+    public function test_the_kitchen_event_targets_the_kitchen_channel_without_amounts(): void
+    {
+        $order = $this->order('in_progress', ['cooking', 'cooking']);
+        $event = new KitchenOrderUpdated($order);
+
+        $channels = collect($event->broadcastOn())->map(fn ($channel) => $channel->name)->all();
+        $payload = $event->broadcastWith();
+
+        $this->assertSame(['private-kitchen.'.$this->restaurant->id], $channels);
+        $this->assertSame('kitchen.order.updated', $event->broadcastAs());
+        $this->assertSame($order->id, $payload['id']);
+        $this->assertSame($order->order_number, $payload['order_number']);
+        $this->assertSame('in_progress', $payload['status']);
+        $this->assertSame($this->table->number, $payload['table']['number']);
+        $this->assertCount(2, $payload['items']);
+
+        foreach (['id', 'item_name', 'quantity', 'kitchen_status', 'special_instructions', 'started_at', 'ready_at'] as $key) {
+            $this->assertArrayHasKey($key, $payload['items'][0]);
+        }
+        foreach (['total', 'subtotal', 'due_amount', 'paid_amount'] as $key) {
+            $this->assertArrayNotHasKey($key, $payload);
+        }
+    }
+
+    public function test_the_kitchen_stage_follows_the_order_and_item_statuses(): void
+    {
+        $cases = [
+            ['in_progress', ['pending', 'pending'], 'pending'],
+            ['in_progress', ['pending', 'served'], 'pending'],
+            ['in_progress', ['cooking', 'cooking'], 'preparing'],
+            ['in_progress', ['cooking', 'pending'], 'preparing'],
+            ['ready', ['ready', 'ready'], 'ready'],
+            ['served', ['served'], null],
+            ['paid', ['served'], null],
+            ['cancelled', ['pending'], null],
+            ['open', ['pending'], null],
+        ];
+
+        foreach ($cases as [$orderStatus, $itemStatuses, $expectedStage]) {
+            $order = $this->order($orderStatus, $itemStatuses);
+
+            $this->assertSame(
+                $expectedStage,
+                (new KitchenOrderUpdated($order))->broadcastWith()['kitchen_stage'],
+                "commande {$orderStatus} avec plats ".implode(',', $itemStatuses)
+            );
         }
     }
 }
