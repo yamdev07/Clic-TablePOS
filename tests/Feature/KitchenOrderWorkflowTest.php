@@ -535,4 +535,59 @@ class KitchenOrderWorkflowTest extends TestCase
             );
         }
     }
+    public function test_pending_orders_returns_orders_grouped_with_their_items(): void
+{
+    $this->actingAsRole('kitchen');
+
+    $order = $this->order('in_progress', ['pending', 'cooking']);
+
+    $response = $this->getJson('/api/kitchen/pending')->assertOk();
+
+    $response->assertJsonCount(1);
+    $response->assertJsonPath('0.id', $order->id);
+    $response->assertJsonCount(2, '0.items');
+
+    $this->assertArrayHasKey('kitchen_stage', $response->json()[0]);
+    $this->assertArrayHasKey('table', $response->json()[0]);
+}
+public function test_pending_orders_returns_the_correct_kitchen_stage(): void
+{
+    $this->actingAsRole('kitchen');
+
+    $pending = $this->order('in_progress', ['pending']);
+    $preparing = $this->order('in_progress', ['cooking']);
+    $ready = $this->order('ready', ['ready']);
+
+    $response = $this->getJson('/api/kitchen/pending')->assertOk();
+
+    $orders = collect($response->json())->keyBy('id');
+
+    $this->assertSame('pending', $orders[$pending->id]['kitchen_stage']);
+    $this->assertSame('preparing', $orders[$preparing->id]['kitchen_stage']);
+    $this->assertSame('ready', $orders[$ready->id]['kitchen_stage']);
+}
+public function test_pending_orders_excludes_foreign_orders_and_irrelevant_items(): void
+{
+    $this->actingAsRole('kitchen');
+
+    $valid = $this->order('in_progress', ['pending']);
+    $foreign = $this->order(
+        'in_progress',
+        ['pending'],
+        Restaurant::factory()->create()
+    );
+    $open = $this->order('open', ['pending']);
+    $served = $this->order('in_progress', ['served']);
+    $empty = $this->order('in_progress', []);
+
+    $response = $this->getJson('/api/kitchen/pending')->assertOk();
+
+    $ids = collect($response->json())->pluck('id');
+
+    $this->assertTrue($ids->contains($valid->id));
+    $this->assertFalse($ids->contains($foreign->id));
+    $this->assertFalse($ids->contains($open->id));
+    $this->assertFalse($ids->contains($served->id));
+    $this->assertFalse($ids->contains($empty->id));
+}
 }

@@ -159,12 +159,13 @@ class KitchenTest extends TestCase
         $response = $this->getJson('/api/kitchen/pending');
 
         $response->assertStatus(200);
-        $ids = collect($response->json())->pluck('id');
+    $itemIds = collect($response->json())
+    ->flatMap(fn ($order) => collect($order['items'])->pluck('id'));
 
-        // Les trois statuts (pending, cooking, ready) doivent être présents
-        $this->assertTrue($ids->contains($this->item->id));
-        $this->assertTrue($ids->contains($cookingItem->id));
-        $this->assertTrue($ids->contains($readyItem->id));
+ // Les trois statuts (pending, cooking, ready) doivent être présents
+$this->assertTrue($itemIds->contains($this->item->id));
+$this->assertTrue($itemIds->contains($cookingItem->id));
+$this->assertTrue($itemIds->contains($readyItem->id));
     }
 
     /** @test */
@@ -175,8 +176,11 @@ class KitchenTest extends TestCase
         $response = $this->getJson('/api/kitchen/pending');
 
         $response->assertStatus(200);
-        $found = collect($response->json())->firstWhere('id', $this->item->id);
-        $this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
+      $found = collect($response->json())
+    ->flatMap(fn ($order) => collect($order['items']))
+    ->firstWhere('id', $this->item->id);
+
+$this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
     }
 
     /** @test */
