@@ -272,4 +272,26 @@ $this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
             $this->item->fresh()->kitchen_status
         );
     }
+    /** @test */
+public function waiter_cannot_use_legacy_kitchen_item_routes(): void
+{
+    $waiter = User::factory()->create([
+        'restaurant_id' => $this->order->restaurant_id,
+        'role' => 'waiter',
+    ]);
+
+    Sanctum::actingAs($waiter);
+
+    $routes = [
+        'cooking',
+        'ready',
+        'serve',
+        'rupture',
+    ];
+
+    foreach ($routes as $action) {
+        $this->patchJson("/api/kitchen/items/{$this->item->id}/{$action}")
+            ->assertStatus(403);
+    }
+}
 }

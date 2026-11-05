@@ -253,6 +253,7 @@ class KitchenController extends Controller
     public function startCooking(Request $request, OrderItem $item)
     {
         $this->ensureItemBelongsToRestaurant($request, $item);
+        $this->ensureKitchenRole($request);
 
         $error = DB::transaction(function () use ($item) {
             // Même ordre de verrous que l'annulation : la commande d'abord, puis le plat
@@ -284,6 +285,7 @@ class KitchenController extends Controller
     public function markReady(Request $request, OrderItem $item)
     {
         $this->ensureItemBelongsToRestaurant($request, $item);
+        $this->ensureKitchenRole($request);
 
         $item->update([
             'kitchen_status' => 'ready',
@@ -298,6 +300,7 @@ class KitchenController extends Controller
     public function markServed(Request $request, OrderItem $item)
     {
         $this->ensureItemBelongsToRestaurant($request, $item);
+        $this->ensureKitchenRole($request);
         $item->update(['kitchen_status' => 'served']);
         $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
 
@@ -307,6 +310,7 @@ class KitchenController extends Controller
     public function markOutOfStock(Request $request, OrderItem $item)
     {
         $this->ensureItemBelongsToRestaurant($request, $item);
+        $this->ensureKitchenRole($request);
         $item->menuItem()->update(['is_available' => false]);
         $item->update(['kitchen_status' => 'served']);
         $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
