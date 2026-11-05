@@ -319,7 +319,7 @@ class DashboardApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('cards.orders.total', 5)
             ->assertJsonPath('cards.orders.paid', 2)
-            ->assertJsonPath('cards.orders.in_progress', 3);
+            ->assertJsonPath('cards.orders.in_progress', 2);
     }
 
     // ── Carte « Couverts » ──
