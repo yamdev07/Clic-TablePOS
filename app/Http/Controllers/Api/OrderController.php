@@ -273,8 +273,6 @@ class OrderController extends Controller
 
             ]);
             $allowedTransitions = [
-                'open' => 'in_progress',
-                'in_progress' => 'ready',
                 'ready' => 'served',
             ];
 
@@ -335,7 +333,12 @@ class OrderController extends Controller
         } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur interne est survenue.',
+            ], 500);
         }
     }
 
