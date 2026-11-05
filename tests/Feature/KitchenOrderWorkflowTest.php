@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Events\OrderStatusChanged;
+use App\Events\WaiterCallRequested;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\Restaurant;
@@ -11,7 +12,6 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
-use App\Events\WaiterCallRequested;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -168,14 +168,14 @@ class KitchenOrderWorkflowTest extends TestCase
         $this->patchJson($this->startUrl($empty))->assertStatus(422);
     }
 
-    public function test_only_kitchen_and_admin_can_start_an_order(): void
+    public function test_only_kitchen_manager_and_admin_can_start_an_order(): void
     {
         $this->actingAsRole('waiter');
         $refused = $this->order('in_progress', ['pending']);
         $this->patchJson($this->startUrl($refused))->assertForbidden();
         $this->assertSame('pending', $refused->items()->first()->kitchen_status);
 
-        foreach (['kitchen', 'admin'] as $role) {
+        foreach (['kitchen', 'manager', 'admin'] as $role) {
             $this->actingAsRole($role);
             $order = $this->order('in_progress', ['pending']);
 
@@ -293,14 +293,14 @@ class KitchenOrderWorkflowTest extends TestCase
         $this->assertSame('in_progress', $empty->fresh()->status);
     }
 
-    public function test_only_kitchen_and_admin_can_mark_an_order_ready(): void
+    public function test_only_kitchen_manager_and_admin_can_mark_an_order_ready(): void
     {
         $this->actingAsRole('waiter');
         $refused = $this->order('in_progress', ['cooking']);
         $this->patchJson($this->readyUrl($refused))->assertForbidden();
         $this->assertSame('in_progress', $refused->fresh()->status);
 
-        foreach (['kitchen', 'admin'] as $role) {
+        foreach (['kitchen', 'manager', 'admin'] as $role) {
             $this->actingAsRole($role);
             $order = $this->order('in_progress', ['cooking']);
 
@@ -336,7 +336,8 @@ class KitchenOrderWorkflowTest extends TestCase
                 && $event->order->status === 'ready'
         );
     }
-        private function callUrl(Order $order): string
+
+    private function callUrl(Order $order): string
     {
         return "/api/kitchen/orders/{$order->id}/call-waiter";
     }
@@ -386,18 +387,18 @@ class KitchenOrderWorkflowTest extends TestCase
         Event::assertNotDispatched(WaiterCallRequested::class);
     }
 
-    public function test_kitchen_and_admin_can_call_the_waiter(): void
+    public function test_kitchen_manager_and_admin_can_call_the_waiter(): void
     {
         Event::fake([WaiterCallRequested::class]);
 
-        foreach (['kitchen', 'admin'] as $role) {
+        foreach (['kitchen', 'manager', 'admin'] as $role) {
             $this->actingAsRole($role);
             $order = $this->order('ready', ['ready']);
 
             $this->postJson($this->callUrl($order))->assertOk();
         }
 
-        Event::assertDispatchedTimes(WaiterCallRequested::class, 2);
+        Event::assertDispatchedTimes(WaiterCallRequested::class, 3);
     }
 
     public function test_the_waiter_cannot_be_called_for_an_order_of_another_restaurant(): void
