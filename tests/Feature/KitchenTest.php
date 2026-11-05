@@ -159,13 +159,13 @@ class KitchenTest extends TestCase
         $response = $this->getJson('/api/kitchen/pending');
 
         $response->assertStatus(200);
-    $itemIds = collect($response->json())
-    ->flatMap(fn ($order) => collect($order['items'])->pluck('id'));
+        $itemIds = collect($response->json())
+            ->flatMap(fn ($order) => collect($order['items'])->pluck('id'));
 
- // Les trois statuts (pending, cooking, ready) doivent être présents
-$this->assertTrue($itemIds->contains($this->item->id));
-$this->assertTrue($itemIds->contains($cookingItem->id));
-$this->assertTrue($itemIds->contains($readyItem->id));
+        // Les trois statuts (pending, cooking, ready) doivent être présents
+        $this->assertTrue($itemIds->contains($this->item->id));
+        $this->assertTrue($itemIds->contains($cookingItem->id));
+        $this->assertTrue($itemIds->contains($readyItem->id));
     }
 
     /** @test */
@@ -176,11 +176,11 @@ $this->assertTrue($itemIds->contains($readyItem->id));
         $response = $this->getJson('/api/kitchen/pending');
 
         $response->assertStatus(200);
-      $found = collect($response->json())
-    ->flatMap(fn ($order) => collect($order['items']))
-    ->firstWhere('id', $this->item->id);
+        $found = collect($response->json())
+            ->flatMap(fn ($order) => collect($order['items']))
+            ->firstWhere('id', $this->item->id);
 
-$this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
+        $this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
     }
 
     /** @test */
@@ -272,26 +272,27 @@ $this->assertEquals('sans piment, bien cuit', $found['special_instructions']);
             $this->item->fresh()->kitchen_status
         );
     }
+
     /** @test */
-public function waiter_cannot_use_legacy_kitchen_item_routes(): void
-{
-    $waiter = User::factory()->create([
-        'restaurant_id' => $this->order->restaurant_id,
-        'role' => 'waiter',
-    ]);
+    public function waiter_cannot_use_legacy_kitchen_item_routes(): void
+    {
+        $waiter = User::factory()->create([
+            'restaurant_id' => $this->order->restaurant_id,
+            'role' => 'waiter',
+        ]);
 
-    Sanctum::actingAs($waiter);
+        Sanctum::actingAs($waiter);
 
-    $routes = [
-        'cooking',
-        'ready',
-        'serve',
-        'rupture',
-    ];
+        $routes = [
+            'cooking',
+            'ready',
+            'serve',
+            'rupture',
+        ];
 
-    foreach ($routes as $action) {
-        $this->patchJson("/api/kitchen/items/{$this->item->id}/{$action}")
-            ->assertStatus(403);
+        foreach ($routes as $action) {
+            $this->patchJson("/api/kitchen/items/{$this->item->id}/{$action}")
+                ->assertStatus(403);
+        }
     }
-}
 }
