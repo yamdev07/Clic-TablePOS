@@ -69,6 +69,11 @@ class OrderApiTest extends TestCase
                 'success',
                 'data' => ['id', 'order_number', 'status', 'table_id'],
             ]);
+        $this->assertDatabaseHas('tables', [
+            'id' => $this->table->id,
+            'status' => 'free',
+            'current_order_id' => null,
+        ]);
     }
 
     /** @test */

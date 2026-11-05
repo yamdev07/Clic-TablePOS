@@ -107,11 +107,6 @@ class OrderController extends Controller
                 'guest_count' => $request->guest_count,
             ]);
 
-            $table->update([
-                'status' => 'occupied',
-                'current_order_id' => $table->current_order_id ?? $order->id,
-            ]);
-
             LogService::log($request, 'order.created',
                 "Commande #{$order->order_number} créée — Table {$table->number}",
                 'order', $order->id);
