@@ -267,6 +267,9 @@ class OrderController extends Controller
                 'message' => 'Une commande passe en payée uniquement par un paiement.',
             ], 422);
         }
+        if ($request->input('status') === 'in_progress' && $order->status === 'open') {
+            return $this->sendToKitchen($request, $order);
+        }
 
         try {
             $request->validate([
@@ -279,14 +282,10 @@ class OrderController extends Controller
                 'ready' => 'served',
             ];
 
-            if (
-                $order->status === 'in_progress'
-                && $request->status === 'ready'
-                && $request->user()->role !== 'admin'
-            ) {
+            if ($order->status === 'in_progress' && $request->status === 'ready') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seul l’administrateur peut effectuer cette transition depuis cette route.',
+                    'message' => 'Une commande est marquée prête depuis la cuisine, pas par cette route.',
                 ], 422);
             }
 

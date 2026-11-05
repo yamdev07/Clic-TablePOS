@@ -157,12 +157,9 @@ class OrderTransitionsTest extends TestCase
         $this->assertSame('in_progress', $inProgress->fresh()->status);
     }
 
-    public function test_status_route_still_moves_an_order_to_ready_then_served(): void
+    public function test_status_route_still_moves_a_ready_order_to_served(): void
     {
-        $order = $this->order('in_progress');
-
-        $this->patchJson("/api/orders/{$order->id}/status", ['status' => 'ready'])->assertOk();
-        $this->assertSame('ready', $order->fresh()->status);
+        $order = $this->order('ready');
 
         $this->patchJson("/api/orders/{$order->id}/status", ['status' => 'served'])->assertOk();
         $this->assertSame('served', $order->fresh()->status);
