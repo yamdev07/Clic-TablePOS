@@ -112,8 +112,7 @@ class DashboardController extends Controller
         $row = Order::where('restaurant_id', $restaurantId)
             ->whereBetween('created_at', $this->toDbRange($today))
             ->where('status', '!=', 'cancelled')
-            ->selectRaw("COUNT(*) as total, SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid_count, SUM(CASE WHEN status IN ('open', 'in_progress', 'ready', 'served') THEN 1 ELSE 0 END) as in_progress_count")
-            ->first();
+            ->selectRaw("COUNT(*) as total, SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid_count, SUM(CASE WHEN status IN ('in_progress', 'ready', 'served') THEN 1 ELSE 0 END) as in_progress_count")->first();
 
         return [
             'total' => (int) $row->total,

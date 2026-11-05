@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Order;
 use App\Models\Restaurant;
+use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -43,5 +45,35 @@ class DashboardAccessTest extends TestCase
 
             $this->getJson('/api/dashboard')->assertForbidden();
         }
+    }
+
+    public function test_les_commandes_open_ne_sont_pas_comptees_en_cours(): void
+    {
+        $user = $this->userWithRole('admin');
+
+        Sanctum::actingAs($user);
+
+        $table = Table::factory()->create([
+            'restaurant_id' => $user->restaurant_id,
+        ]);
+
+        Order::factory()->create([
+            'restaurant_id' => $user->restaurant_id,
+            'user_id' => $user->id,
+            'table_id' => $table->id,
+            'status' => 'open',
+        ]);
+
+        Order::factory()->create([
+            'restaurant_id' => $user->restaurant_id,
+            'user_id' => $user->id,
+            'table_id' => $table->id,
+            'status' => 'in_progress',
+        ]);
+
+        $response = $this->getJson('/api/dashboard')->assertOk();
+
+        $response->assertJsonPath('cards.orders.total', 2);
+        $response->assertJsonPath('cards.orders.in_progress', 1);
     }
 }
