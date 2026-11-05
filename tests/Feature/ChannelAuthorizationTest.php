@@ -73,11 +73,13 @@ class ChannelAuthorizationTest extends TestCase
         $this->assertSame(403, $this->channelStatus('admin', 'restaurant', ownRestaurant: false));
     }
 
-    public function test_kitchen_channel_excludes_waiters_and_other_restaurants(): void
+    public function test_kitchen_channel_is_reserved_to_kitchen_manager_and_admin_of_the_restaurant(): void
     {
         $this->assertSame(200, $this->channelStatus('admin', 'kitchen'));
+        $this->assertSame(200, $this->channelStatus('manager', 'kitchen'));
         $this->assertSame(200, $this->channelStatus('kitchen', 'kitchen'));
         $this->assertSame(403, $this->channelStatus('waiter', 'kitchen'));
+        $this->assertSame(403, $this->channelStatus('manager', 'kitchen', ownRestaurant: false));
         $this->assertSame(403, $this->channelStatus('kitchen', 'kitchen', ownRestaurant: false));
     }
 }
