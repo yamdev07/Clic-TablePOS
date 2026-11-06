@@ -198,6 +198,7 @@ class KitchenController extends Controller
     }
     public function pendingOrders(Request $request)
     {
+                $this->ensureKitchenRole($request);
         $orders = Order::where('restaurant_id', $request->user()->restaurant_id)
             ->whereIn('status', ['in_progress', 'ready'])
             ->whereHas('items', function ($query) {
