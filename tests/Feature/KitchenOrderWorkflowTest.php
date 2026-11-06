@@ -617,4 +617,19 @@ public function test_pending_orders_excludes_foreign_orders_and_irrelevant_items
 
         $this->assertEquals($byId($eventOrder), $byId($apiOrder));
     }
+        public function test_only_kitchen_manager_and_admin_can_read_the_kitchen_queue(): void
+    {
+        $this->actingAsRole('waiter');
+        $order = $this->order('in_progress', ['pending']);
+
+        $this->getJson('/api/kitchen/pending')->assertForbidden();
+
+        foreach (['kitchen', 'manager', 'admin'] as $role) {
+            $this->actingAsRole($role);
+
+            $ids = collect($this->getJson('/api/kitchen/pending')->assertOk()->json())->pluck('id');
+
+            $this->assertTrue($ids->contains($order->id), "rôle {$role}");
+        }
+    }
 }
