@@ -261,10 +261,10 @@ class DashboardController extends Controller
             $now->copy()->endOfDay(),
         ];
 
-        $items = OrderItem::whereHas('order', fn ($q) => $q
-            ->where('restaurant_id', $restaurantId)
-            ->where('status', '!=', 'cancelled')
-            ->whereBetween('created_at', $this->toDbRange($range)))
+        $items = OrderItem::whereNull('out_of_stock_at')
+            ->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId)
+                ->where('status', '!=', 'cancelled')
+                ->whereBetween('created_at', $this->toDbRange($range)))
             ->get(['menu_item_id', 'item_name', 'quantity', 'total_price']);
 
         $top = $items->groupBy('menu_item_id')

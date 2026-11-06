@@ -24,8 +24,7 @@ class TableController extends Controller
     public function index(Request $request)
     {
         return response()->json(
-            Table::with(['currentOrder.items:id,order_id,item_name,quantity,kitchen_status,special_instructions'])
-                ->where('restaurant_id', $request->user()->restaurant_id)
+            Table::with(['currentOrder.items:id,order_id,item_name,quantity,kitchen_status,special_instructions,out_of_stock_at'])->where('restaurant_id', $request->user()->restaurant_id)
                 ->orderBy('number')
                 ->get()
         );
@@ -83,34 +82,34 @@ class TableController extends Controller
         return response()->json($table);
     }
 
-public function destroy(Table $table, Request $request)
-{
-    $this->ensureTableBelongsToRestaurant($request, $table);
+    public function destroy(Table $table, Request $request)
+    {
+        $this->ensureTableBelongsToRestaurant($request, $table);
 
-    // Empêcher la suppression si la table possède des commandes
-    if ($table->orders()->exists()) {
-        return response()->json([
-            'message' => 'Impossible de supprimer une table associée à des commandes. Conservez-la pour préserver l’historique.',
-        ], 422);
+        // Empêcher la suppression si la table possède des commandes
+        if ($table->orders()->exists()) {
+            return response()->json([
+                'message' => 'Impossible de supprimer une table associée à des commandes. Conservez-la pour préserver l’historique.',
+            ], 422);
+        }
+
+        $tableNumber = $table->number;
+        $tableId = $table->id;
+
+        // Supprimer la table
+        $table->delete();
+
+        // Enregistrer le journal uniquement après la suppression réussie
+        LogService::log(
+            $request,
+            'table.deleted',
+            "Table {$tableNumber} supprimée",
+            'table',
+            $tableId
+        );
+
+        return response()->json(null, 204);
     }
-
-    $tableNumber = $table->number;
-    $tableId = $table->id;
-
-    // Supprimer la table
-    $table->delete();
-
-    // Enregistrer le journal uniquement après la suppression réussie
-    LogService::log(
-        $request,
-        'table.deleted',
-        "Table {$tableNumber} supprimée",
-        'table',
-        $tableId
-    );
-
-    return response()->json(null, 204);
-}
 
     public function updateStatus(Request $request, Table $table)
     {

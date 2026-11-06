@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\KitchenOrderUpdated;
 use App\Events\OrderStatusChanged;
+use App\Events\OutOfStockReported;
 use App\Events\WaiterCallRequested;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
@@ -202,7 +203,10 @@ class KitchenController extends Controller
         $orders = Order::where('restaurant_id', $request->user()->restaurant_id)
             ->whereIn('status', ['in_progress', 'ready'])
             ->whereHas('items', function ($query) {
-                $query->whereIn('kitchen_status', Order::KITCHEN_VISIBLE_ITEM_STATUSES);
+                $query->where(function ($q) {
+                    $q->whereIn('kitchen_status', Order::KITCHEN_VISIBLE_ITEM_STATUSES)
+                        ->orWhereNotNull('out_of_stock_at');
+                });
             })
             ->with(['table', 'items'])
             ->orderBy('created_at')
@@ -218,15 +222,56 @@ class KitchenController extends Controller
     {
         $this->ensureItemBelongsToRestaurant($request, $item);
         $this->ensureKitchenRole($request);
-        $item->menuItem()->update(['is_available' => false]);
-        $item->update(['kitchen_status' => 'served']);
+
+        $result = DB::transaction(function () use ($item) {
+            // Même ordre de verrous que l'annulation et la cuisine : la commande d'abord, puis le plat
+            $lockedOrder = Order::whereKey($item->order_id)->lockForUpdate()->firstOrFail();
+            $lockedItem = OrderItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
+
+            if (
+                $lockedOrder->status !== 'in_progress'
+                || ! in_array($lockedItem->kitchen_status, ['pending', 'cooking'], true)
+                || $lockedItem->out_of_stock_at !== null
+            ) {
+                return null;
+            }
+
+            $lockedItem->update([
+                'out_of_stock_at' => now(),
+                'kitchen_status' => 'served',
+            ]);
+
+            $lockedItem->menuItem()->update(['is_available' => false]);
+
+            // Le plat en rupture n'est plus facturé
+            $lockedOrder->recalculate();
+
+            return [$lockedOrder, $lockedItem];
+        });
+
+        if ($result === null) {
+            return response()->json([
+                'message' => 'Ce plat ne peut pas être signalé en rupture.',
+            ], 422);
+        }
+
+        [$order, $reported] = $result;
+
+        // Diffusion après la transaction : les écrans lisent des données déjà enregistrées
         $this->tryBroadcast(
             fn () => broadcast(
-                new KitchenOrderUpdated($item->order->fresh(['items', 'table']))
+                new KitchenOrderUpdated($order->fresh(['items', 'table']))
+            )->toOthers()
+        );
+        $this->tryBroadcast(
+            fn () => broadcast(
+                new OutOfStockReported($order->fresh(['table']), $reported->fresh())
             )->toOthers()
         );
 
-        return response()->json(['message' => 'Rupture signalée — plat retiré du menu']);
+        return response()->json([
+            'message' => 'Rupture signalée — plat retiré du menu.',
+        ]);
     }
 
     /** Broadcast silencieux — ne casse pas la réponse si Reverb est absent. */

@@ -15,15 +15,19 @@ class OrderItem extends Model
     public $incrementing = false;
 
     protected $keyType = 'string';
-protected $fillable = [
-    'id', 'order_id', 'menu_item_id', 'item_name', 'item_description',
-    'quantity', 'unit_price', 'total_price', 'kitchen_status',
-    'special_instructions', 'modifiers', 'ready_at', 'started_at',
-];
-   protected $casts = [
-    'ready_at' => 'datetime',
-    'started_at' => 'datetime',
-];
+
+    protected $fillable = [
+        'id', 'order_id', 'menu_item_id', 'item_name', 'item_description',
+        'quantity', 'unit_price', 'total_price', 'kitchen_status',
+        'special_instructions', 'modifiers', 'ready_at', 'started_at', 'out_of_stock_at',
+    ];
+
+    protected $casts = [
+        'ready_at' => 'datetime',
+        'started_at' => 'datetime',
+        'out_of_stock_at' => 'datetime',
+    ];
+
     protected static function boot()
     {
         parent::boot();
@@ -50,10 +54,10 @@ protected $fillable = [
         $this->update(['kitchen_status' => 'cooking']);
     }
 
-   public function markAsReady()
-{
-    $this->update(['kitchen_status' => 'ready', 'ready_at' => $this->ready_at ?? now()]);
-}
+    public function markAsReady()
+    {
+        $this->update(['kitchen_status' => 'ready', 'ready_at' => $this->ready_at ?? now()]);
+    }
 
     public function markAsServed()
     {

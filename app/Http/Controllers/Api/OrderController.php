@@ -59,8 +59,7 @@ class OrderController extends Controller
         $orders = Order::with([
             'table:id,number,capacity',
             'user:id,name,role',
-            'items:id,order_id,menu_item_id,item_name,quantity,unit_price,total_price,kitchen_status',
-        ])
+            'items:id,order_id,menu_item_id,item_name,quantity,unit_price,total_price,kitchen_status,out_of_stock_at',        ])
             ->where('restaurant_id', $request->user()->restaurant_id)
             ->orderBy('created_at', 'desc')
             ->paginate(30);
@@ -364,8 +363,13 @@ class OrderController extends Controller
                 return 'Cette commande ne peut plus être annulée.';
             }
 
-            $items = $locked->items()->lockForUpdate()->get(['id', 'kitchen_status']);
-            $started = $items->contains(fn ($item) => $item->kitchen_status !== 'pending');
+            $items = $locked->items()
+                ->lockForUpdate()
+                ->get(['id', 'kitchen_status', 'out_of_stock_at']);
+
+            $started = $items->contains(fn ($item) => $item->out_of_stock_at === null
+                && $item->kitchen_status !== 'pending'
+            );
 
             if ($started || in_array($locked->status, ['ready', 'served'], true)) {
                 return "Impossible d'annuler cette commande : la préparation d'au moins un plat a déjà commencé.";

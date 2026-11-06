@@ -12,7 +12,8 @@ class Order extends Model
 {
     /** Une commande open est un brouillon : elle n'est pas active. */
     public const ACTIVE_STATUSES = ['in_progress', 'ready', 'served'];
-        /** Un plat servi (ou sorti par une rupture) n'apparaît plus à l'écran de la cuisine. */
+
+    /** Un plat servi (ou sorti par une rupture) n'apparaît plus à l'écran de la cuisine. */
     public const KITCHEN_VISIBLE_ITEM_STATUSES = ['pending', 'cooking', 'ready'];
 
     use HasFactory;
@@ -86,6 +87,7 @@ class Order extends Model
     {
         return $this->hasMany(Payment::class);
     }
+
     /** Étape à l'écran de la cuisine : pending, preparing, ready, ou null si la commande n'y figure pas. */
     public function kitchenStage(): ?string
     {
@@ -113,7 +115,9 @@ class Order extends Model
         $table = $this->getRelation('table');
 
         $items = $this->items
-            ->filter(fn ($item) => in_array($item->kitchen_status, self::KITCHEN_VISIBLE_ITEM_STATUSES, true))
+            ->filter(fn ($item) => $item->out_of_stock_at !== null
+                || in_array($item->kitchen_status, self::KITCHEN_VISIBLE_ITEM_STATUSES, true)
+            )
             ->sortBy(fn ($item) => $item->created_at->format('Y-m-d H:i:s').'|'.$item->id)
             ->values();
 
@@ -128,20 +132,29 @@ class Order extends Model
                 'item_name' => $item->item_name,
                 'quantity' => $item->quantity,
                 'kitchen_status' => $item->kitchen_status,
+                'out_of_stock' => $item->out_of_stock_at !== null,
                 'special_instructions' => $item->special_instructions,
                 'started_at' => $item->started_at?->toISOString(),
                 'ready_at' => $item->ready_at?->toISOString(),
             ])->all(),
         ];
     }
+
     public function recalculate(): void
     {
-        $subtotal = $this->items()->sum('total_price');
+        // Les plats signalés en rupture ne sont plus facturés.
+        $subtotal = $this->items()
+            ->whereNull('out_of_stock_at')
+            ->sum('total_price');
+
         $tax = (int) ($subtotal * 0.18);
         $serviceCharge = (int) ($subtotal * 0.05);
         $total = $subtotal + $tax + $serviceCharge;
 
-        $paid = $this->payments()->where('status', 'completed')->sum('amount');
+        $paid = $this->payments()
+            ->where('status', 'completed')
+            ->sum('amount');
+
         $due = $total - $paid;
 
         $this->update([
