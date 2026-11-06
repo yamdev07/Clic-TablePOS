@@ -5,7 +5,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\KitchenOrderUpdated;
-use App\Events\OrderItemStatusChanged;
 use App\Events\OrderStatusChanged;
 use App\Events\WaiterCallRequested;
 use App\Http\Controllers\Controller;
@@ -221,7 +220,11 @@ class KitchenController extends Controller
         $this->ensureKitchenRole($request);
         $item->menuItem()->update(['is_available' => false]);
         $item->update(['kitchen_status' => 'served']);
-        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
+        $this->tryBroadcast(
+            fn () => broadcast(
+                new KitchenOrderUpdated($item->order->fresh(['items', 'table']))
+            )->toOthers()
+        );
 
         return response()->json(['message' => 'Rupture signalée — plat retiré du menu']);
     }
