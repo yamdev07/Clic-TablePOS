@@ -590,4 +590,31 @@ public function test_pending_orders_excludes_foreign_orders_and_irrelevant_items
     $this->assertFalse($ids->contains($served->id));
     $this->assertFalse($ids->contains($empty->id));
 }
+    public function test_the_api_and_the_event_describe_a_kitchen_order_the_same_way(): void
+    {
+        $this->actingAsRole('kitchen');
+        // un plat servi (rupture) ne doit apparaître nulle part à l'écran de la cuisine
+        $order = $this->order('in_progress', ['cooking', 'pending', 'served']);
+
+        $apiOrder = collect($this->getJson('/api/kitchen/pending')->assertOk()->json())
+            ->firstWhere('id', $order->id);
+        $this->assertNotNull($apiOrder);
+
+        $eventOrder = json_decode(
+            json_encode((new KitchenOrderUpdated($order->fresh()))->broadcastWith()),
+            true
+        );
+
+        $this->assertCount(2, $eventOrder['items']);
+        $this->assertCount(2, $apiOrder['items']);
+        $this->assertSame($this->table->number, $apiOrder['table']['number']);
+
+        $byId = function (array $payload): array {
+            usort($payload['items'], fn ($a, $b) => strcmp($a['id'], $b['id']));
+
+            return $payload;
+        };
+
+        $this->assertEquals($byId($eventOrder), $byId($apiOrder));
+    }
 }
