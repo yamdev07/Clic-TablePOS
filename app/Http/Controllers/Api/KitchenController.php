@@ -196,60 +196,22 @@ class KitchenController extends Controller
             'message' => 'Le serveur a été appelé.',
         ]);
     }
-
     public function pendingOrders(Request $request)
     {
         $orders = Order::where('restaurant_id', $request->user()->restaurant_id)
             ->whereIn('status', ['in_progress', 'ready'])
             ->whereHas('items', function ($query) {
-                $query->whereIn('kitchen_status', ['pending', 'cooking', 'ready']);
+                $query->whereIn('kitchen_status', Order::KITCHEN_VISIBLE_ITEM_STATUSES);
             })
-            ->with([
-                'table',
-                'items' => function ($query) {
-                    $query->whereIn('kitchen_status', ['pending', 'cooking', 'ready'])
-                        ->orderBy('created_at');
-                },
-            ])
+            ->with(['table', 'items'])
             ->orderBy('created_at')
+            ->orderBy('id')
             ->get();
 
-        $result = $orders->map(function ($order) {
-            $items = $order->items;
-
-            $kitchenStage = match ($order->status) {
-                'ready' => 'ready',
-                'in_progress' => (
-                    $items->contains(fn ($item) => in_array(
-                        $item->kitchen_status,
-                        ['cooking', 'ready'],
-                        true
-                    ))
-                ) ? 'preparing' : 'pending',
-                default => null,
-            };
-
-            return [
-                'id' => $order->id,
-                'order_number' => $order->order_number,
-                'status' => $order->status,
-                'table' => $order->table?->number,
-                'kitchen_stage' => $kitchenStage,
-                'items' => $items->map(fn ($item) => [
-                    'id' => $item->id,
-                    'item_name' => $item->item_name,
-                    'quantity' => $item->quantity,
-                    'kitchen_status' => $item->kitchen_status,
-                    'special_instructions' => $item->special_instructions,
-                    'started_at' => $item->started_at?->toISOString(),
-                    'ready_at' => $item->ready_at?->toISOString(),
-                ])->values(),
-            ];
-        })->values();
-
-        return response()->json($result);
+        return response()->json(
+            $orders->map(fn ($order) => $order->toKitchenArray())->values()
+        );
     }
-
     public function startCooking(Request $request, OrderItem $item)
     {
         $this->ensureItemBelongsToRestaurant($request, $item);

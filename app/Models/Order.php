@@ -12,6 +12,8 @@ class Order extends Model
 {
     /** Une commande open est un brouillon : elle n'est pas active. */
     public const ACTIVE_STATUSES = ['in_progress', 'ready', 'served'];
+        /** Un plat servi (ou sorti par une rupture) n'apparaît plus à l'écran de la cuisine. */
+    public const KITCHEN_VISIBLE_ITEM_STATUSES = ['pending', 'cooking', 'ready'];
 
     use HasFactory;
 
@@ -84,7 +86,54 @@ class Order extends Model
     {
         return $this->hasMany(Payment::class);
     }
+    /** Étape à l'écran de la cuisine : pending, preparing, ready, ou null si la commande n'y figure pas. */
+    public function kitchenStage(): ?string
+    {
+        if ($this->status === 'ready') {
+            return 'ready';
+        }
 
+        if ($this->status !== 'in_progress') {
+            return null;
+        }
+
+        $started = $this->items->contains(
+            fn ($item) => in_array($item->kitchen_status, ['cooking', 'ready'], true)
+        );
+
+        return $started ? 'preparing' : 'pending';
+    }
+
+    /** Description d'une commande pour l'écran de la cuisine (API et temps réel). Aucun montant. */
+    public function toKitchenArray(): array
+    {
+        $this->loadMissing(['items', 'table']);
+
+        // Dans le modèle, $this->table serait le nom de la table SQL : on lit la relation chargée
+        $table = $this->getRelation('table');
+
+        $items = $this->items
+            ->filter(fn ($item) => in_array($item->kitchen_status, self::KITCHEN_VISIBLE_ITEM_STATUSES, true))
+            ->sortBy(fn ($item) => $item->created_at->format('Y-m-d H:i:s').'|'.$item->id)
+            ->values();
+
+        return [
+            'id' => $this->id,
+            'order_number' => $this->order_number,
+            'status' => $this->status,
+            'table' => $table ? ['number' => $table->number] : null,
+            'kitchen_stage' => $this->kitchenStage(),
+            'items' => $items->map(fn ($item) => [
+                'id' => $item->id,
+                'item_name' => $item->item_name,
+                'quantity' => $item->quantity,
+                'kitchen_status' => $item->kitchen_status,
+                'special_instructions' => $item->special_instructions,
+                'started_at' => $item->started_at?->toISOString(),
+                'ready_at' => $item->ready_at?->toISOString(),
+            ])->all(),
+        ];
+    }
     public function recalculate(): void
     {
         $subtotal = $this->items()->sum('total_price');
