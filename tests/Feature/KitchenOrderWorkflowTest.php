@@ -98,6 +98,7 @@ class KitchenOrderWorkflowTest extends TestCase
         foreach ($order->items()->get() as $item) {
             $this->assertSame('cooking', $item->kitchen_status);
             $this->assertNotNull($item->started_at);
+            $this->assertNull($item->ready_at);
         }
         $this->assertSame('in_progress', $order->fresh()->status);
     }
@@ -535,61 +536,65 @@ class KitchenOrderWorkflowTest extends TestCase
             );
         }
     }
+
     public function test_pending_orders_returns_orders_grouped_with_their_items(): void
-{
-    $this->actingAsRole('kitchen');
+    {
+        $this->actingAsRole('kitchen');
 
-    $order = $this->order('in_progress', ['pending', 'cooking']);
+        $order = $this->order('in_progress', ['pending', 'cooking']);
 
-    $response = $this->getJson('/api/kitchen/pending')->assertOk();
+        $response = $this->getJson('/api/kitchen/pending')->assertOk();
 
-    $response->assertJsonCount(1);
-    $response->assertJsonPath('0.id', $order->id);
-    $response->assertJsonCount(2, '0.items');
+        $response->assertJsonCount(1);
+        $response->assertJsonPath('0.id', $order->id);
+        $response->assertJsonCount(2, '0.items');
 
-    $this->assertArrayHasKey('kitchen_stage', $response->json()[0]);
-    $this->assertArrayHasKey('table', $response->json()[0]);
-}
-public function test_pending_orders_returns_the_correct_kitchen_stage(): void
-{
-    $this->actingAsRole('kitchen');
+        $this->assertArrayHasKey('kitchen_stage', $response->json()[0]);
+        $this->assertArrayHasKey('table', $response->json()[0]);
+    }
 
-    $pending = $this->order('in_progress', ['pending']);
-    $preparing = $this->order('in_progress', ['cooking']);
-    $ready = $this->order('ready', ['ready']);
+    public function test_pending_orders_returns_the_correct_kitchen_stage(): void
+    {
+        $this->actingAsRole('kitchen');
 
-    $response = $this->getJson('/api/kitchen/pending')->assertOk();
+        $pending = $this->order('in_progress', ['pending']);
+        $preparing = $this->order('in_progress', ['cooking']);
+        $ready = $this->order('ready', ['ready']);
 
-    $orders = collect($response->json())->keyBy('id');
+        $response = $this->getJson('/api/kitchen/pending')->assertOk();
 
-    $this->assertSame('pending', $orders[$pending->id]['kitchen_stage']);
-    $this->assertSame('preparing', $orders[$preparing->id]['kitchen_stage']);
-    $this->assertSame('ready', $orders[$ready->id]['kitchen_stage']);
-}
-public function test_pending_orders_excludes_foreign_orders_and_irrelevant_items(): void
-{
-    $this->actingAsRole('kitchen');
+        $orders = collect($response->json())->keyBy('id');
 
-    $valid = $this->order('in_progress', ['pending']);
-    $foreign = $this->order(
-        'in_progress',
-        ['pending'],
-        Restaurant::factory()->create()
-    );
-    $open = $this->order('open', ['pending']);
-    $served = $this->order('in_progress', ['served']);
-    $empty = $this->order('in_progress', []);
+        $this->assertSame('pending', $orders[$pending->id]['kitchen_stage']);
+        $this->assertSame('preparing', $orders[$preparing->id]['kitchen_stage']);
+        $this->assertSame('ready', $orders[$ready->id]['kitchen_stage']);
+    }
 
-    $response = $this->getJson('/api/kitchen/pending')->assertOk();
+    public function test_pending_orders_excludes_foreign_orders_and_irrelevant_items(): void
+    {
+        $this->actingAsRole('kitchen');
 
-    $ids = collect($response->json())->pluck('id');
+        $valid = $this->order('in_progress', ['pending']);
+        $foreign = $this->order(
+            'in_progress',
+            ['pending'],
+            Restaurant::factory()->create()
+        );
+        $open = $this->order('open', ['pending']);
+        $served = $this->order('in_progress', ['served']);
+        $empty = $this->order('in_progress', []);
 
-    $this->assertTrue($ids->contains($valid->id));
-    $this->assertFalse($ids->contains($foreign->id));
-    $this->assertFalse($ids->contains($open->id));
-    $this->assertFalse($ids->contains($served->id));
-    $this->assertFalse($ids->contains($empty->id));
-}
+        $response = $this->getJson('/api/kitchen/pending')->assertOk();
+
+        $ids = collect($response->json())->pluck('id');
+
+        $this->assertTrue($ids->contains($valid->id));
+        $this->assertFalse($ids->contains($foreign->id));
+        $this->assertFalse($ids->contains($open->id));
+        $this->assertFalse($ids->contains($served->id));
+        $this->assertFalse($ids->contains($empty->id));
+    }
+
     public function test_the_api_and_the_event_describe_a_kitchen_order_the_same_way(): void
     {
         $this->actingAsRole('kitchen');
@@ -617,7 +622,8 @@ public function test_pending_orders_excludes_foreign_orders_and_irrelevant_items
 
         $this->assertEquals($byId($eventOrder), $byId($apiOrder));
     }
-        public function test_only_kitchen_manager_and_admin_can_read_the_kitchen_queue(): void
+
+    public function test_only_kitchen_manager_and_admin_can_read_the_kitchen_queue(): void
     {
         $this->actingAsRole('waiter');
         $order = $this->order('in_progress', ['pending']);

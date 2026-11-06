@@ -181,13 +181,14 @@ class TenantIsolationTest extends TestCase
 
     // ── Cuisine ──
 
-    public function test_cannot_update_kitchen_status_of_other_restaurant_item(): void
+    public function test_cannot_update_kitchen_status_of_other_restaurant_order(): void
     {
-        $this->patchJson("/api/kitchen/items/{$this->itemB->id}/cooking")->assertNotFound();
-        $this->patchJson("/api/kitchen/items/{$this->itemB->id}/ready")->assertNotFound();
-        $this->patchJson("/api/kitchen/items/{$this->itemB->id}/serve")->assertNotFound();
+        $this->patchJson("/api/kitchen/orders/{$this->orderB->id}/cooking")->assertNotFound();
+        $this->patchJson("/api/kitchen/orders/{$this->orderB->id}/ready")->assertNotFound();
+        $this->postJson("/api/kitchen/orders/{$this->orderB->id}/call-waiter")->assertNotFound();
 
         $this->assertDatabaseHas('order_items', ['id' => $this->itemB->id, 'kitchen_status' => 'pending']);
+        $this->assertSame('in_progress', $this->orderB->fresh()->status);
     }
 
     public function test_cannot_mark_other_restaurant_menu_item_out_of_stock(): void

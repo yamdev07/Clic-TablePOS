@@ -71,46 +71,6 @@ class KitchenTest extends TestCase
     }
 
     /** @test */
-    public function kitchen_can_start_cooking_an_item(): void
-    {
-        $response = $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking");
-
-        $response->assertStatus(200);
-        $this->assertDatabaseHas('order_items', [
-            'id' => $this->item->id,
-            'kitchen_status' => 'cooking',
-        ]);
-    }
-
-    /** @test */
-    public function kitchen_can_mark_item_ready(): void
-    {
-        $this->item->update(['kitchen_status' => 'cooking']);
-
-        $response = $this->patchJson("/api/kitchen/items/{$this->item->id}/ready");
-
-        $response->assertStatus(200);
-        $this->assertDatabaseHas('order_items', [
-            'id' => $this->item->id,
-            'kitchen_status' => 'ready',
-        ]);
-    }
-
-    /** @test */
-    public function kitchen_can_mark_item_served(): void
-    {
-        $this->item->update(['kitchen_status' => 'ready']);
-
-        $response = $this->patchJson("/api/kitchen/items/{$this->item->id}/serve");
-
-        $response->assertStatus(200);
-        $this->assertDatabaseHas('order_items', [
-            'id' => $this->item->id,
-            'kitchen_status' => 'served',
-        ]);
-    }
-
-    /** @test */
     public function kitchen_can_signal_out_of_stock(): void
     {
         $response = $this->patchJson("/api/kitchen/items/{$this->item->id}/rupture");
@@ -184,31 +144,6 @@ class KitchenTest extends TestCase
     }
 
     /** @test */
-    public function starting_cooking_records_started_at(): void
-    {
-        $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
-            ->assertStatus(200);
-
-        $this->assertNotNull($this->item->fresh()->started_at);
-    }
-
-    /** @test */
-    public function starting_cooking_twice_keeps_the_first_started_at(): void
-    {
-        $this->travelTo(now()->setTime(12, 10));
-        $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
-            ->assertStatus(200);
-        $first = $this->item->fresh()->started_at;
-
-        $this->travelTo(now()->setTime(12, 25));
-        $this->patchJson("/api/kitchen/items/{$this->item->id}/cooking")
-            ->assertStatus(200);
-
-        $this->assertNotNull($first);
-        $this->assertEquals($first, $this->item->fresh()->started_at);
-    }
-
-    /** @test */
     public function kitchen_can_mark_all_order_items_ready(): void
     {
         $secondItem = OrderItem::create([
@@ -274,7 +209,7 @@ class KitchenTest extends TestCase
     }
 
     /** @test */
-    public function waiter_cannot_use_legacy_kitchen_item_routes(): void
+    public function waiter_cannot_signal_out_of_stock(): void
     {
         $waiter = User::factory()->create([
             'restaurant_id' => $this->order->restaurant_id,
@@ -283,16 +218,20 @@ class KitchenTest extends TestCase
 
         Sanctum::actingAs($waiter);
 
-        $routes = [
-            'cooking',
-            'ready',
-            'serve',
-            'rupture',
-        ];
+        $this->patchJson("/api/kitchen/items/{$this->item->id}/rupture")
+            ->assertStatus(403);
+    }
 
-        foreach ($routes as $action) {
+    public function test_legacy_item_routes_for_cooking_ready_and_serve_no_longer_exist(): void
+    {
+        foreach (['cooking', 'ready', 'serve'] as $action) {
             $this->patchJson("/api/kitchen/items/{$this->item->id}/{$action}")
-                ->assertStatus(403);
+                ->assertNotFound();
         }
+
+        $this->assertDatabaseHas('order_items', [
+            'id' => $this->item->id,
+            'kitchen_status' => 'pending',
+        ]);
     }
 }

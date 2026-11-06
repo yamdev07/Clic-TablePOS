@@ -111,42 +111,4 @@ class DashboardDataTest extends TestCase
 
         $this->assertSame(0, Order::count());
     }
-
-    // ── Heure à laquelle un plat est prêt ──
-
-    public function test_marking_ready_records_ready_at(): void
-    {
-        Sanctum::actingAs($this->kitchen);
-        $item = $this->pendingItem();
-
-        $this->patchJson("/api/kitchen/items/{$item->id}/ready")->assertOk();
-
-        $item = $item->fresh();
-        $this->assertSame('ready', $item->kitchen_status);
-        $this->assertNotNull($item->ready_at);
-    }
-
-    public function test_ready_at_keeps_the_first_time_when_marked_twice(): void
-    {
-        Sanctum::actingAs($this->kitchen);
-        $item = $this->pendingItem();
-
-        $this->patchJson("/api/kitchen/items/{$item->id}/ready")->assertOk();
-        $first = $item->fresh()->ready_at->timestamp;
-
-        $this->travel(5)->minutes();
-        $this->patchJson("/api/kitchen/items/{$item->id}/ready")->assertOk();
-
-        $this->assertSame($first, $item->fresh()->ready_at->timestamp);
-    }
-
-    public function test_starting_cooking_does_not_set_ready_at(): void
-    {
-        Sanctum::actingAs($this->kitchen);
-        $item = $this->pendingItem();
-
-        $this->patchJson("/api/kitchen/items/{$item->id}/cooking")->assertOk();
-
-        $this->assertNull($item->fresh()->ready_at);
-    }
 }

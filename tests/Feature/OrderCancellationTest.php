@@ -224,32 +224,14 @@ class OrderCancellationTest extends TestCase
         $this->assertFalse($ids->contains($itemId));
     }
 
-    public function test_kitchen_cannot_start_an_item_of_a_cancelled_or_paid_order(): void
-    {
-        foreach (['cancelled', 'paid'] as $status) {
-            $this->actingAsRole('waiter');
-            $order = $this->order($status, ['pending']);
-            $item = $order->items()->first();
-
-            $this->actingAsRole('kitchen');
-            $this->patchJson("/api/kitchen/items/{$item->id}/cooking")
-                ->assertStatus(422)
-                ->assertJson(['message' => "Cette commande n'est plus active : impossible de commencer la préparation."]);
-
-            $this->assertSame('pending', $item->fresh()->kitchen_status, "commande {$status}");
-            $this->assertNull($item->fresh()->started_at, "commande {$status}");
-        }
-    }
-
     public function test_cancelling_is_refused_after_the_cook_started_an_item(): void
     {
         $this->actingAsRole('waiter');
         $order = $this->order('in_progress', ['pending', 'pending']);
-        $pizza = $order->items()->first();
 
-        // le cuisinier commence la pizza
+        // le cuisinier lance la préparation de la commande
         $this->actingAsRole('kitchen');
-        $this->patchJson("/api/kitchen/items/{$pizza->id}/cooking")->assertOk();
+        $this->patchJson("/api/kitchen/orders/{$order->id}/cooking")->assertOk();
 
         // puis le serveur tente d'annuler
         $this->actingAsRole('waiter');
