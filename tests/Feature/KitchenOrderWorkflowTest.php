@@ -10,8 +10,10 @@ use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
+use Illuminate\Broadcasting\BroadcastEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -638,22 +640,39 @@ class KitchenOrderWorkflowTest extends TestCase
 
     public function test_signalling_out_of_stock_updates_the_kitchen_screen_by_order(): void
     {
-        Event::fake([KitchenOrderUpdated::class]);
+        Queue::fake();
+
         $this->actingAsRole('kitchen');
+
         $order = $this->order('in_progress', ['pending', 'pending']);
         $outOfStock = $order->items()->orderBy('id')->first();
 
-        $this->patchJson("/api/kitchen/items/{$outOfStock->id}/rupture")->assertOk();
+        $this->patchJson("/api/kitchen/items/{$outOfStock->id}/rupture")
+            ->assertOk();
 
-        Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
-        Event::assertDispatched(
-            KitchenOrderUpdated::class,
-            function ($event) use ($order, $outOfStock) {
+        Queue::assertPushed(
+            BroadcastEvent::class,
+            function ($job) use ($order, $outOfStock) {
+                $event = $job->event;
+
+                if (! $event instanceof KitchenOrderUpdated) {
+                    return false;
+                }
+
                 $payload = $event->broadcastWith();
 
+                $ruptureItem = collect($payload['items'])
+                    ->firstWhere('id', $outOfStock->id);
+
+                $otherItem = collect($payload['items'])
+                    ->first(fn ($item) => $item['id'] !== $outOfStock->id);
+
                 return $event->order->id === $order->id
-                    && count($payload['items']) === 1
-                    && $payload['items'][0]['id'] !== $outOfStock->id;
+                    && count($payload['items']) === 2
+                    && $ruptureItem !== null
+                    && $ruptureItem['out_of_stock'] === true
+                    && $otherItem !== null
+                    && $otherItem['out_of_stock'] === false;
             }
         );
     }

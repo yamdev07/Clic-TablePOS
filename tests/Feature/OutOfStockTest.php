@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Events\OutOfStockReported;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
+use Illuminate\Broadcasting\BroadcastEvent;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -89,6 +93,7 @@ class OutOfStockTest extends TestCase
         $this->assertSame('served', $item->fresh()->kitchen_status);
         $this->assertNull($other->fresh()->out_of_stock_at);
         $this->assertFalse((bool) $this->dish->fresh()->is_available);
+        $this->assertSame(1000, $order->fresh()->subtotal);
     }
 
     public function test_a_pending_or_cooking_item_can_be_reported(): void
@@ -127,5 +132,56 @@ class OutOfStockTest extends TestCase
             $this->assertNull($item->fresh()->out_of_stock_at, "commande {$orderStatus}, plat {$kitchenStatus}");
             $this->assertTrue((bool) $this->dish->fresh()->is_available, "commande {$orderStatus}, plat {$kitchenStatus}");
         }
+    }
+
+    public function test_reporting_out_of_stock_notifies_the_restaurant_without_financial_data(): void
+    {
+        Queue::fake();
+
+        $order = $this->order('in_progress', ['pending']);
+        $item = $order->items()->first();
+
+        $this->report($item)->assertOk();
+
+        Queue::assertPushed(
+            BroadcastEvent::class,
+            function (BroadcastEvent $job) use ($order, $item) {
+                $event = $job->event;
+
+                if (! $event instanceof OutOfStockReported) {
+                    return false;
+                }
+
+                $channels = $event->broadcastOn();
+
+                $this->assertEquals(
+                    new PrivateChannel('restaurant.'.$this->restaurant->id),
+                    $channels[0]
+                );
+
+                $payload = $event->broadcastWith();
+
+                $this->assertSame([
+                    'order_id',
+                    'order_number',
+                    'table_id',
+                    'table_number',
+                    'item_id',
+                    'item_name',
+                    'message',
+                ], array_keys($payload));
+
+                $this->assertSame($order->id, $payload['order_id']);
+                $this->assertSame($item->id, $payload['item_id']);
+                $this->assertSame($item->item_name, $payload['item_name']);
+
+                $this->assertSame(
+                    "Le plat {$item->item_name} est en rupture de stock.",
+                    $payload['message']
+                );
+
+                return true;
+            }
+        );
     }
 }

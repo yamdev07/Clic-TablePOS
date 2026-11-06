@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Models\MenuItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
@@ -76,7 +77,6 @@ class OrderApiTest extends TestCase
         ]);
     }
 
-    /** @test */
     /** @test */
     public function user_can_create_another_order_on_occupied_table_without_replacing_current_order()
     {
@@ -186,5 +186,47 @@ class OrderApiTest extends TestCase
 
             $response->assertStatus(422);
         }
+    }
+
+    /** @test */
+    public function user_can_see_out_of_stock_information_in_order_details()
+    {
+        $order = Order::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->restaurant->id,
+            'table_id' => $this->table->id,
+            'user_id' => $this->user->id,
+            'status' => 'in_progress',
+            'order_number' => 'ORD-RUPTURE-001',
+        ]);
+        $menuItem = MenuItem::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->restaurant->id,
+            'name' => 'Poulet braisé',
+            'price' => 1000,
+            'is_available' => false,
+            'is_active' => true,
+        ]);
+
+        $item = OrderItem::create([
+            'id' => (string) Str::uuid(),
+            'order_id' => $order->id,
+            'item_name' => 'Poulet braisé',
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'total_price' => 1000,
+            'kitchen_status' => 'served',
+            'menu_item_id' => $menuItem->id,
+            'out_of_stock_at' => now(),
+        ]);
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk()
+            ->assertJsonPath('items.0.id', $item->id)
+            ->assertJsonPath('items.0.item_name', 'Poulet braisé')
+            ->assertJsonPath('items.0.kitchen_status', 'served');
+
+        $this->assertNotNull($response->json('items.0.out_of_stock_at'));
     }
 }
