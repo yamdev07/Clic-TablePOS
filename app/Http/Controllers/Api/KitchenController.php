@@ -196,9 +196,10 @@ class KitchenController extends Controller
             'message' => 'Le serveur a été appelé.',
         ]);
     }
+
     public function pendingOrders(Request $request)
     {
-                $this->ensureKitchenRole($request);
+        $this->ensureKitchenRole($request);
         $orders = Order::where('restaurant_id', $request->user()->restaurant_id)
             ->whereIn('status', ['in_progress', 'ready'])
             ->whereHas('items', function ($query) {
@@ -212,62 +213,6 @@ class KitchenController extends Controller
         return response()->json(
             $orders->map(fn ($order) => $order->toKitchenArray())->values()
         );
-    }
-    public function startCooking(Request $request, OrderItem $item)
-    {
-        $this->ensureItemBelongsToRestaurant($request, $item);
-        $this->ensureKitchenRole($request);
-
-        $error = DB::transaction(function () use ($item) {
-            // Même ordre de verrous que l'annulation : la commande d'abord, puis le plat
-            $order = Order::whereKey($item->order_id)->lockForUpdate()->first();
-
-            if (in_array($order->status, ['cancelled', 'paid'], true)) {
-                return "Cette commande n'est plus active : impossible de commencer la préparation.";
-            }
-
-            $locked = OrderItem::whereKey($item->id)->lockForUpdate()->first();
-            $locked->update([
-                'kitchen_status' => 'cooking',
-                'started_at' => $locked->started_at ?? now(),
-            ]);
-
-            return null;
-        });
-
-        if ($error) {
-            return response()->json(['message' => $error], 422);
-        }
-
-        $item->refresh();
-        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
-
-        return response()->json(['message' => 'Préparation commencée']);
-    }
-
-    public function markReady(Request $request, OrderItem $item)
-    {
-        $this->ensureItemBelongsToRestaurant($request, $item);
-        $this->ensureKitchenRole($request);
-
-        $item->update([
-            'kitchen_status' => 'ready',
-            'ready_at' => $item->ready_at ?? now(),
-        ]);
-
-        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table'))));
-
-        return response()->json(['message' => 'Plat prêt']);
-    }
-
-    public function markServed(Request $request, OrderItem $item)
-    {
-        $this->ensureItemBelongsToRestaurant($request, $item);
-        $this->ensureKitchenRole($request);
-        $item->update(['kitchen_status' => 'served']);
-        $this->tryBroadcast(fn () => broadcast(new OrderItemStatusChanged($item->load('order.table')))->toOthers());
-
-        return response()->json(['message' => 'Plat servi']);
     }
 
     public function markOutOfStock(Request $request, OrderItem $item)
