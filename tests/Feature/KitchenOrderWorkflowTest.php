@@ -638,4 +638,27 @@ class KitchenOrderWorkflowTest extends TestCase
             $this->assertTrue($ids->contains($order->id), "rôle {$role}");
         }
     }
+
+    public function test_signalling_out_of_stock_updates_the_kitchen_screen_by_order(): void
+    {
+        Event::fake([KitchenOrderUpdated::class, OrderItemStatusChanged::class]);
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['pending', 'pending']);
+        $outOfStock = $order->items()->orderBy('id')->first();
+
+        $this->patchJson("/api/kitchen/items/{$outOfStock->id}/rupture")->assertOk();
+
+        Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
+        Event::assertDispatched(
+            KitchenOrderUpdated::class,
+            function ($event) use ($order, $outOfStock) {
+                $payload = $event->broadcastWith();
+
+                return $event->order->id === $order->id
+                    && count($payload['items']) === 1
+                    && $payload['items'][0]['id'] !== $outOfStock->id;
+            }
+        );
+        Event::assertNotDispatched(OrderItemStatusChanged::class);
+    }
 }
