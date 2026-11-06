@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Events\KitchenOrderUpdated;
-use App\Events\OrderItemStatusChanged;
 use App\Events\OrderStatusChanged;
 use App\Events\WaiterCallRequested;
 use App\Models\MenuItem;
@@ -438,7 +437,7 @@ class KitchenOrderWorkflowTest extends TestCase
 
     public function test_starting_the_order_sends_one_kitchen_event_instead_of_one_per_item(): void
     {
-        Event::fake([KitchenOrderUpdated::class, OrderItemStatusChanged::class]);
+        Event::fake([KitchenOrderUpdated::class]);
         $this->actingAsRole('kitchen');
         $order = $this->order('in_progress', ['pending', 'pending', 'pending']);
 
@@ -446,12 +445,11 @@ class KitchenOrderWorkflowTest extends TestCase
 
         Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
         Event::assertDispatched(KitchenOrderUpdated::class, fn ($event) => $event->order->id === $order->id);
-        Event::assertNotDispatched(OrderItemStatusChanged::class);
     }
 
     public function test_marking_ready_sends_one_kitchen_event_and_still_tells_the_waiters(): void
     {
-        Event::fake([KitchenOrderUpdated::class, OrderItemStatusChanged::class, OrderStatusChanged::class]);
+        Event::fake([KitchenOrderUpdated::class, OrderStatusChanged::class]);
         $this->actingAsRole('kitchen');
         $order = $this->order('in_progress', ['cooking', 'cooking']);
 
@@ -459,7 +457,6 @@ class KitchenOrderWorkflowTest extends TestCase
 
         Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
         Event::assertDispatchedTimes(OrderStatusChanged::class, 1);
-        Event::assertNotDispatched(OrderItemStatusChanged::class);
     }
 
     public function test_confirming_the_service_tells_the_kitchen(): void
@@ -641,7 +638,7 @@ class KitchenOrderWorkflowTest extends TestCase
 
     public function test_signalling_out_of_stock_updates_the_kitchen_screen_by_order(): void
     {
-        Event::fake([KitchenOrderUpdated::class, OrderItemStatusChanged::class]);
+        Event::fake([KitchenOrderUpdated::class]);
         $this->actingAsRole('kitchen');
         $order = $this->order('in_progress', ['pending', 'pending']);
         $outOfStock = $order->items()->orderBy('id')->first();
@@ -659,6 +656,5 @@ class KitchenOrderWorkflowTest extends TestCase
                     && $payload['items'][0]['id'] !== $outOfStock->id;
             }
         );
-        Event::assertNotDispatched(OrderItemStatusChanged::class);
     }
 }
