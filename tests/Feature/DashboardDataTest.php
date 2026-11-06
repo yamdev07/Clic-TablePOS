@@ -2,14 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\MenuItem;
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -21,8 +18,6 @@ class DashboardDataTest extends TestCase
 
     private User $waiter;
 
-    private User $kitchen;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -33,11 +28,6 @@ class DashboardDataTest extends TestCase
             'restaurant_id' => $this->restaurant->id,
             'role' => 'waiter',
         ]);
-
-        $this->kitchen = User::factory()->create([
-            'restaurant_id' => $this->restaurant->id,
-            'role' => 'kitchen',
-        ]);
     }
 
     private function freeTable(): Table
@@ -45,29 +35,6 @@ class DashboardDataTest extends TestCase
         return Table::factory()->create([
             'restaurant_id' => $this->restaurant->id,
             'status' => 'free',
-        ]);
-    }
-
-    private function pendingItem(): OrderItem
-    {
-        $order = Order::factory()->create([
-            'restaurant_id' => $this->restaurant->id,
-            'table_id' => $this->freeTable()->id,
-            'user_id' => $this->waiter->id,
-            'status' => 'in_progress',
-        ]);
-
-        $menuItem = MenuItem::factory()->create(['restaurant_id' => $this->restaurant->id]);
-
-        return OrderItem::create([
-            'id' => (string) Str::uuid(),
-            'order_id' => $order->id,
-            'menu_item_id' => $menuItem->id,
-            'item_name' => 'Plat',
-            'quantity' => 1,
-            'unit_price' => 1000,
-            'total_price' => 1000,
-            'kitchen_status' => 'pending',
         ]);
     }
 
