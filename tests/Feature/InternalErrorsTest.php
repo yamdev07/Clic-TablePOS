@@ -131,6 +131,7 @@ class InternalErrorsTest extends TestCase
             'total_price' => 1000,
             'kitchen_status' => 'pending',
         ]);
+        $order->recalculate();
         $this->makeOrderWritesFail();
 
         $this->assertGenericError(
@@ -152,5 +153,12 @@ class InternalErrorsTest extends TestCase
         $this->makeOrderWritesFail();
 
         $this->assertGenericError($this->postJson("/api/orders/{$order->id}/send-to-kitchen"));
+    }
+
+    public function test_login_validation_errors_are_reported_as_422_not_500(): void
+    {
+        $this->postJson('/api/login', ['password' => 'Motdepasse1'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('email');
     }
 }
