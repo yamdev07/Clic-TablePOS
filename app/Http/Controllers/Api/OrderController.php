@@ -115,8 +115,7 @@ class OrderController extends Controller
         } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+            return $this->internalError($e);        }
     }
 
     public function addItem(Request $request, Order $order)
@@ -162,8 +161,7 @@ class OrderController extends Controller
         } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+            return $this->internalError($e);        }
     }
 
     public function removeItem(Request $request, Order $order, $itemId)
@@ -184,8 +182,7 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'message' => 'Item supprimé']);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+            return $this->internalError($e);        }
     }
 
     public function confirm(Request $request, Order $order)
@@ -207,8 +204,7 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'message' => 'Commande confirmée']);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+            return $this->internalError($e);        }
     }
 
     public function cancel(Request $request, Order $order)
@@ -235,8 +231,7 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'message' => 'Commande envoyée en cuisine']);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+            return $this->internalError($e);        }
     }
 
     public function updateStatus(Request $request, Order $order)
@@ -396,6 +391,16 @@ class OrderController extends Controller
             ['status' => $oldStatus], ['status' => 'cancelled']);
 
         return response()->json(['success' => true, 'message' => 'Commande annulée', 'data' => $order]);
+    }
+        /** Erreur inattendue : le détail va dans les journaux du serveur, jamais au client. */
+    private function internalError(\Throwable $e)
+    {
+        report($e);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Une erreur interne est survenue.',
+        ], 500);
     }
 
     /** Broadcast silencieux — ne casse pas la réponse si Reverb est absent. */
