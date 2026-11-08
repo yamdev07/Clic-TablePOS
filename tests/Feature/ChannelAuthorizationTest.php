@@ -82,4 +82,12 @@ class ChannelAuthorizationTest extends TestCase
         $this->assertSame(403, $this->channelStatus('manager', 'kitchen', ownRestaurant: false));
         $this->assertSame(403, $this->channelStatus('kitchen', 'kitchen', ownRestaurant: false));
     }
+
+    public function test_cashier_can_join_the_restaurant_channel_only(): void
+    {
+        $this->assertSame(200, $this->channelStatus('cashier', 'restaurant'));
+        $this->assertSame(403, $this->channelStatus('cashier', 'restaurant', ownRestaurant: false));
+        $this->assertSame(403, $this->channelStatus('cashier', 'kitchen'));
+        $this->assertSame(403, $this->channelStatus('cashier', 'dashboard'));
+    }
 }
