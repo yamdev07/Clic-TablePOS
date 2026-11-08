@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\LogController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PaymentNumberController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\UserController;
@@ -68,6 +69,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payments
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store']);
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index']);
+    // Numéros Mobile Money du restaurant
+    Route::get('/payment-numbers', [PaymentNumberController::class, 'index']);
+    Route::post('/payment-numbers', [PaymentNumberController::class, 'store']);
+    Route::patch('/payment-numbers/{paymentNumber}', [PaymentNumberController::class, 'update']);
+    Route::delete('/payment-numbers/{paymentNumber}', [PaymentNumberController::class, 'destroy']);
 
     // Stats sidebar (1 appel au lieu de 2)
     Route::get('/stats', [StatsController::class, 'index']);
