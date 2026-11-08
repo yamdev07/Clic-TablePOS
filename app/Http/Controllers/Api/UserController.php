@@ -37,8 +37,7 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
-            'role' => 'required|in:admin,manager,waiter,kitchen',
-        ]);
+            'role' => 'required|in:admin,manager,waiter,kitchen,cashier',        ]);
 
         $user = User::create([
             'id' => (string) Str::uuid(),
@@ -68,7 +67,7 @@ class UserController extends Controller
 
         $request->validate([
             'name' => 'sometimes|string|max:255',
-            'role' => 'sometimes|in:admin,manager,waiter,kitchen',
+            'role' => 'sometimes|in:admin,manager,waiter,kitchen,cashier',
             'is_active' => 'sometimes|boolean',
             'password' => 'sometimes|string|min:6',
         ]);
