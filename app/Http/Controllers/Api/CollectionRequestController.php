@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\CollectionRequest;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\PaymentNumber;
 use App\Services\LogService;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -12,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class CollectionRequestController extends Controller
 {
@@ -20,6 +22,8 @@ class CollectionRequestController extends Controller
     private const CANCEL_ROLES = ['admin', 'manager', 'waiter'];
 
     private const INDEX_ROLES = ['admin', 'manager', 'cashier', 'waiter'];
+
+    private const COLLECT_ROLES = ['admin', 'manager', 'cashier'];
 
     private function ensureBelongsToRestaurant(Request $request, CollectionRequest $collectionRequest): void
     {
@@ -221,6 +225,140 @@ class CollectionRequestController extends Controller
         LogService::log($request, 'collection_request.cancelled',
             "Demande d'encaissement annulée — table #{$collectionRequest->table_id}",
             'collection_request', $collectionRequest->id);
+
+        return response()->json($this->serialize($collectionRequest));
+    }
+
+    public function validateCollection(Request $request, CollectionRequest $collectionRequest)
+    {
+        $this->ensureBelongsToRestaurant($request, $collectionRequest);
+
+        abort_unless(
+            in_array($request->user()->role, self::COLLECT_ROLES, true),
+            403,
+            "Seuls le caissier, le gérant et l'administrateur peuvent valider une demande d'encaissement."
+        );
+
+        $validated = $request->validate([
+            'receipt_confirmed' => 'accepted',
+            'reference' => ['nullable', 'string', 'max:255'],
+        ], [
+            'receipt_confirmed.accepted' => 'Vous devez confirmer avoir reçu le paiement.',
+        ]);
+
+        $restaurantId = $request->user()->restaurant_id;
+        $isMobileMoney = $collectionRequest->method === 'mobile_money';
+
+        if ($isMobileMoney) {
+            $request->validate([
+                'reference' => ['required', 'string', 'max:255'],
+            ], [
+                'reference.required' => 'La référence de la transaction est obligatoire pour un paiement Mobile Money.',
+            ]);
+        }
+
+        $error = null;
+
+        DB::transaction(function () use ($request, $collectionRequest, $validated, $restaurantId, $isMobileMoney, &$error) {
+            $locked = CollectionRequest::whereKey($collectionRequest->id)->lockForUpdate()->first();
+
+            if ($locked->status !== 'pending') {
+                $error = 'Seule une demande en attente peut être validée.';
+
+                return;
+            }
+
+            // Verrouiller toutes les commandes (ordre par id pour éviter les deadlocks)
+            $orders = Order::whereIn(
+                'id',
+                $locked->orders()->pluck('orders.id')->all()
+            )->orderBy('id')->lockForUpdate()->get();
+
+            // Refuser si une commande n'est plus servie ou a déjà été partiellement payée
+            foreach ($orders as $order) {
+                if ($order->status !== 'served') {
+                    $error = "La commande {$order->order_number} n'est plus servie : la validation est annulée.";
+
+                    return;
+                }
+
+                $hasPartial = Payment::where('order_id', $order->id)
+                    ->whereIn('status', ['pending', 'completed'])
+                    ->exists();
+
+                if ($hasPartial) {
+                    $error = 'Une commande de cette demande possède déjà un paiement partiel. Veuillez la régler séparément.';
+
+                    return;
+                }
+
+                if ($order->due_amount <= 0) {
+                    $error = "La commande {$order->order_number} est déjà entièrement payée.";
+
+                    return;
+                }
+            }
+
+            // Vérifier l'unicité de la référence MM (à l'échelle du groupe)
+            if ($isMobileMoney) {
+                $alreadyUsed = Payment::referenceAlreadyUsed(
+                    $restaurantId,
+                    $locked->operator,
+                    $validated['reference'],
+                    null,
+                );
+
+                if ($alreadyUsed) {
+                    throw ValidationException::withMessages([
+                        'reference' => 'Cette référence de transaction a déjà été utilisée pour cet opérateur.',
+                    ]);
+                }
+            }
+
+            // Création des paiements (un par commande)
+            $groupId = (string) Str::uuid();
+
+            foreach ($orders as $order) {
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'order_id' => $order->id,
+                    'user_id' => $request->user()->id,
+                    'payment_group_id' => $groupId,
+                    'amount' => $order->due_amount,
+                    'method' => $locked->method,
+                    'operator' => $isMobileMoney ? $locked->operator : null,
+                    'reference' => $isMobileMoney ? $validated['reference'] : null,
+                    'transaction_data' => [
+                        'receipt_confirmed_at' => now()->toIso8601String(),
+                        'collection_request_id' => $locked->id,
+                    ],
+                    'status' => 'completed',
+                ]);
+            }
+
+            // Mise à jour de chaque commande
+            foreach ($orders as $order) {
+                $order->update(['pending_collection_request_id' => null]);
+                $order->recalculate();
+            }
+
+            $locked->update([
+                'status' => 'validated',
+                'validated_by' => $request->user()->id,
+                'validated_at' => now(),
+            ]);
+        });
+
+        if ($error !== null) {
+            return response()->json(['success' => false, 'message' => $error], 422);
+        }
+
+        $collectionRequest->refresh()->load(['orders', 'table:id,number', 'requester:id,name']);
+
+        LogService::log($request, 'collection_request.validated',
+            "Demande d'encaissement validée — table #{$collectionRequest->table_id}",
+            'collection_request', $collectionRequest->id,
+            [], ['method' => $collectionRequest->method, 'operator' => $collectionRequest->operator]);
 
         return response()->json($this->serialize($collectionRequest));
     }

@@ -79,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/collection-requests', [CollectionRequestController::class, 'index']);
     Route::get('/collection-requests/{collectionRequest}', [CollectionRequestController::class, 'show']);
     Route::post('/collection-requests', [CollectionRequestController::class, 'store']);
+    Route::post('/collection-requests/{collectionRequest}/validate', [CollectionRequestController::class, 'validateCollection']);
     Route::delete('/collection-requests/{collectionRequest}', [CollectionRequestController::class, 'cancel']);
 
     // Stats sidebar (1 appel au lieu de 2)

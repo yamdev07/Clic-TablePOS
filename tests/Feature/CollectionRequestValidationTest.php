@@ -273,7 +273,13 @@ class CollectionRequestValidationTest extends TestCase
             ->assertJsonValidationErrors('reference');
 
         $this->assertSame('pending', $cr2->fresh()->status);
-        $this->assertSame(2, Payment::where('reference', 'MOMO-REF-1')->count()); // seulement groupe 1
+        $this->assertSame(1, Payment::where('reference', 'MOMO-REF-1')->count());
+        $group1Payments = Payment::where('reference', 'MOMO-REF-1')->get();
+        $this->assertCount(1, $group1Payments);
+        $group1GroupId = $group1Payments->first()->payment_group_id;
+        $this->assertNotNull($group1GroupId);
+        // Aucun nouveau payment n'a été ajouté par la tentative du groupe 2
+        $this->assertSame(1, Payment::where('payment_group_id', $group1GroupId)->count());
     }
 
     // ------------------------------------------------------------------
