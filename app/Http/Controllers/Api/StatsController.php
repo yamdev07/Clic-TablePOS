@@ -233,7 +233,7 @@ class StatsController extends Controller
 
         return response()->json([
             'id' => $zReport->id,
-            'date' => $zReport->date,
+            'date' => $zReport->date instanceof Carbon ? $zReport->date->toDateString() : (string) $zReport->date,
             'sequence_number' => $zReport->sequence_number,
             'code' => $zReport->code,
             'snapshot' => $zReport->snapshot,
@@ -242,5 +242,91 @@ class StatsController extends Controller
             'closed_by' => $zReport->closed_by,
             'closed_at' => $zReport->closed_at?->toIso8601String(),
         ], 201);
+    }
+
+    public function closedList(Request $request)
+    {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager', 'cashier'], true),
+            403,
+            "Seuls le caissier, le gérant et l'administrateur peuvent consulter l'historique des clôtures."
+        );
+
+        $validated = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'per_page' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $perPage = min((int) ($validated['per_page'] ?? 30), 100);
+
+        $query = ZReport::where('restaurant_id', $request->user()->restaurant_id)
+            ->with(['closer:id,name,role'])
+            ->orderByDesc('date')
+            ->orderByDesc('sequence_number');
+
+        if (! empty($validated['from'])) {
+            $query->where('date', '>=', $validated['from']);
+        }
+        if (! empty($validated['to'])) {
+            $query->where('date', '<=', $validated['to']);
+        }
+
+        $page = $query->paginate($perPage);
+
+        $rows = $page->getCollection()->map(fn (ZReport $z) => [
+            'id' => $z->id,
+            'code' => $z->code,
+            'date' => $z->date instanceof Carbon ? $z->date->toDateString() : (string) $z->date,
+            'sequence_number' => $z->sequence_number,
+            'cash_counted' => $z->cash_counted,
+            'cash_difference' => $z->cash_difference,
+            'closed_at' => $z->closed_at?->toIso8601String(),
+            'closed_by' => $z->closer ? [
+                'id' => $z->closer->id,
+                'name' => $z->closer->name,
+                'role' => $z->closer->role,
+            ] : null,
+        ]);
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'current_page' => $page->currentPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+                'last_page' => $page->lastPage(),
+            ],
+        ]);
+    }
+
+    public function closedShow(Request $request, string $id)
+    {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager', 'cashier'], true),
+            403,
+            "Seuls le caissier, le gérant et l'administrateur peuvent consulter une clôture Z."
+        );
+
+        $z = ZReport::where('restaurant_id', $request->user()->restaurant_id)
+            ->where('id', $id)
+            ->with(['closer:id,name,role'])
+            ->firstOrFail();
+
+        return response()->json([
+            'id' => $z->id,
+            'code' => $z->code,
+            'date' => $z->date instanceof Carbon ? $z->date->toDateString() : (string) $z->date,
+            'sequence_number' => $z->sequence_number,
+            'snapshot' => $z->snapshot,
+            'cash_counted' => $z->cash_counted,
+            'cash_difference' => $z->cash_difference,
+            'closed_at' => $z->closed_at?->toIso8601String(),
+            'closed_by' => $z->closer ? [
+                'id' => $z->closer->id,
+                'name' => $z->closer->name,
+                'role' => $z->closer->role,
+            ] : null,
+        ]);
     }
 }

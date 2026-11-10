@@ -23,6 +23,7 @@ class ZReport extends Model
     protected $casts = [
         'snapshot' => 'array',
         'closed_at' => 'datetime',
+        'date' => 'date',
         'cash_counted' => 'integer',
         'cash_difference' => 'integer',
         'sequence_number' => 'integer',

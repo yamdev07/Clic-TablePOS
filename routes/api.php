@@ -93,6 +93,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Stats sidebar (1 appel au lieu de 2)
     Route::get('/stats', [StatsController::class, 'index']);
+    Route::get('/stats/z-report/closed', [StatsController::class, 'closedList']);
+    Route::get('/stats/z-report/closed/{id}', [StatsController::class, 'closedShow']);
+
     Route::get('/stats/z-report', [StatsController::class, 'zReport']);
     Route::post('/stats/z-report/close', [StatsController::class, 'close']);
 
