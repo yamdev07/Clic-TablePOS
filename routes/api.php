@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentNumberController;
 use App\Http\Controllers\Api\PaymentsHistoryController;
+use App\Http\Controllers\Api\RestaurantSettingsController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\UserController;
@@ -27,6 +28,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    // Paramètres fiscaux du restaurant
+    Route::get('/restaurant/settings', [RestaurantSettingsController::class, 'show']);
+    Route::patch('/restaurant/settings', [RestaurantSettingsController::class, 'update']);
     // Dashboard (admin et gérant)
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
