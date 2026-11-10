@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Table;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
@@ -32,11 +33,11 @@ class StatsController extends Controller
                 ->first();
 
             return [
-                'tables'         => (int) $tables->total,
+                'tables' => (int) $tables->total,
                 'occupiedTables' => (int) $tables->occupied,
-                'activeOrders'   => $activeOrders,
-                'todayOrders'    => (int) $todayStats->today_orders,
-                'todayRevenue'   => (int) $todayStats->today_revenue,
+                'activeOrders' => $activeOrders,
+                'todayOrders' => (int) $todayStats->today_orders,
+                'todayRevenue' => (int) $todayStats->today_revenue,
             ];
         });
 
@@ -45,54 +46,91 @@ class StatsController extends Controller
 
     public function zReport(Request $request)
     {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager', 'cashier'], true),
+            403,
+            "Seuls le caissier, le gérant et l'administrateur peuvent consulter le rapport Z."
+        );
+
         $restaurantId = $request->user()->restaurant_id;
-        $date = $request->get('date', now()->toDateString());
+        $tz = 'Africa/Porto-Novo';
 
-        $orders = Order::where('restaurant_id', $restaurantId)
-            ->whereDate('created_at', $date)
-            ->whereIn('status', ['paid', 'served', 'ready', 'in_progress', 'open', 'cancelled'])
-            ->with('payments')
-            ->get();
+        $date = $request->filled('date')
+            ? Carbon::parse($request->input('date'), $tz)
+            : Carbon::now($tz);
 
-        $paidOrders = $orders->whereIn('status', ['paid']);
+        $fromLocal = $date->copy()->startOfDay();
+        $toLocal = $date->copy()->endOfDay();
+        $fromUtc = $fromLocal->copy()->utc();
+        $toUtc = $toLocal->copy()->utc();
 
-        $totalOrders   = $orders->count();
-        $paidOrdersCount = $paidOrders->count();
-        $cancelledCount = $orders->where('status', 'cancelled')->count();
-        $totalRevenue  = $paidOrders->sum('total');
-        $totalPaid     = $paidOrders->sum('paid_amount');
+        // Commandes payées ce jour (référence = completed_at en UTC)
+        $paidOrdersQuery = Order::where('restaurant_id', $restaurantId)
+            ->where('status', 'paid')
+            ->whereBetween('completed_at', [$fromUtc, $toUtc]);
 
-        // Breakdown by payment method
-        $allPayments = Payment::whereHas('order', function ($q) use ($restaurantId, $date) {
-            $q->where('restaurant_id', $restaurantId)
-              ->whereDate('created_at', $date);
-        })->get();
+        $paidOrders = $paidOrdersQuery->get([
+            'id', 'total', 'subtotal', 'tax', 'service_charge', 'guest_count',
+        ]);
 
-        $methodLabels = [
-            'cash'         => 'Espèces',
-            'card'         => 'Carte bancaire',
-            'wave'         => 'Wave',
-            'orange_money' => 'Orange Money',
+        $totalOrders = Order::where('restaurant_id', $restaurantId)
+            ->whereBetween('created_at', [$fromUtc, $toUtc])
+            ->count();
+
+        $cancelledCount = Order::where('restaurant_id', $restaurantId)
+            ->where('status', 'cancelled')
+            ->whereBetween('created_at', [$fromUtc, $toUtc])
+            ->count();
+
+        // Encaissements (payments completed) de la journée
+        $payments = Payment::whereHas(
+            'order',
+            fn ($q) => $q->where('restaurant_id', $restaurantId)
+        )
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [$fromUtc, $toUtc])
+            ->get(['amount', 'method', 'operator']);
+
+        // Commandes non clôturées (servies mais non payées)
+        $unclosedQuery = Order::where('restaurant_id', $restaurantId)
+            ->where('status', 'served')
+            ->where('due_amount', '>', 0);
+        $unclosedCount = (clone $unclosedQuery)->count();
+        $unclosedAmount = (int) $unclosedQuery->sum('due_amount');
+
+        // Ventilation par opérateur
+        $breakdown = [
+            'cash' => ['key' => 'cash', 'label' => 'Espèces', 'amount' => 0, 'count' => 0],
+            'mtn_momo' => ['key' => 'mtn_momo', 'label' => 'MTN MoMo', 'amount' => 0, 'count' => 0],
+            'moov_money' => ['key' => 'moov_money', 'label' => 'Moov Money', 'amount' => 0, 'count' => 0],
+            'celtiis_cash' => ['key' => 'celtiis_cash', 'label' => 'Celtiis Cash', 'amount' => 0, 'count' => 0],
         ];
 
-        $breakdown = [];
-        foreach ($allPayments as $payment) {
-            $method = $payment->method;
-            if (!isset($breakdown[$method])) {
-                $breakdown[$method] = ['label' => $methodLabels[$method] ?? $method, 'amount' => 0, 'count' => 0];
+        foreach ($payments as $payment) {
+            if ($payment->method === 'cash') {
+                $breakdown['cash']['amount'] += (int) $payment->amount;
+                $breakdown['cash']['count']++;
+            } elseif ($payment->method === 'mobile_money' && isset($breakdown[$payment->operator])) {
+                $breakdown[$payment->operator]['amount'] += (int) $payment->amount;
+                $breakdown[$payment->operator]['count']++;
             }
-            $breakdown[$method]['amount'] += $payment->amount;
-            $breakdown[$method]['count']++;
         }
 
         return response()->json([
-            'date'              => $date,
-            'total_orders'      => $totalOrders,
-            'paid_orders'       => $paidOrdersCount,
-            'cancelled_orders'  => $cancelledCount,
-            'total_revenue'     => $totalRevenue,
-            'total_paid'        => $totalPaid,
+            'date' => $date->toDateString(),
+            'total_orders' => $totalOrders,
+            'paid_orders' => $paidOrders->count(),
+            'cancelled_orders' => $cancelledCount,
+            'total_revenue' => (int) $paidOrders->sum('total'),
+            'total_paid' => (int) $payments->sum('amount'),
             'payment_breakdown' => array_values($breakdown),
+            // enrichissements par la maquette
+            'total_subtotal' => (int) $paidOrders->sum('subtotal'),
+            'total_tax' => (int) $paidOrders->sum('tax'),
+            'total_service_charge' => (int) $paidOrders->sum('service_charge'),
+            'unclosed_orders' => $unclosedCount,
+            'unclosed_amount' => $unclosedAmount,
+            'guests_count' => (int) $paidOrders->sum('guest_count'),
         ]);
     }
 }

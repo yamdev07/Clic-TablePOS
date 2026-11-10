@@ -56,9 +56,24 @@ class ZReportTest extends TestCase
     private function servedOrder(?Restaurant $restaurant = null, ?string $status = 'served'): Order
     {
         $restaurant ??= $this->restaurant;
-        $table = $restaurant->is($this->restaurant)
-            ? $this->table
-            : Table::factory()->create(['restaurant_id' => $restaurant->id, 'number' => '9']);
+
+        if ($restaurant->is($this->restaurant)) {
+            $table = $this->table;
+        } else {
+            // Une seule table "9" par restaurant, création idempotente
+            $table = Table::firstOrCreate(
+                [
+                    'restaurant_id' => $restaurant->id,
+                    'number' => '9',
+                ],
+                [
+                    'id' => (string) Str::uuid(),
+                    'capacity' => 2,
+                    'status' => 'occupied',
+                    'qr_code' => 'test-'.$restaurant->id,
+                ]
+            );
+        }
 
         $order = Order::create([
             'id' => (string) Str::uuid(),
