@@ -8,6 +8,7 @@ use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -126,5 +127,56 @@ class OrderRecalculateTest extends TestCase
 
         $this->assertSame('paid', $this->order->fresh()->status);
         $this->assertSame('free', $this->table->fresh()->status);
+    }
+
+    public function test_completed_at_is_set_when_order_becomes_paid(): void
+    {
+        $this->postJson("/api/orders/{$this->order->id}/items", [
+            'menu_item_id' => $this->dish->id,
+            'quantity' => 1,
+        ])->assertCreated();
+
+        $this->order->update(['status' => 'served']);
+        $this->assertNull($this->order->fresh()->completed_at);
+
+        $total = $this->order->fresh()->total;
+        $this->postJson("/api/orders/{$this->order->id}/payments", [
+            'amount' => $total,
+            'method' => 'cash', 'receipt_confirmed' => true,
+        ])->assertCreated();
+
+        $fresh = $this->order->fresh();
+        $this->assertSame('paid', $fresh->status);
+        $this->assertNotNull($fresh->completed_at);
+        $this->assertInstanceOf(Carbon::class, $fresh->completed_at);
+    }
+
+    public function test_completed_at_is_never_overwritten_by_a_later_recalculate(): void
+    {
+        $this->postJson("/api/orders/{$this->order->id}/items", [
+            'menu_item_id' => $this->dish->id,
+            'quantity' => 1,
+        ])->assertCreated();
+
+        $this->order->update(['status' => 'served']);
+        $total = $this->order->fresh()->total;
+        $this->postJson("/api/orders/{$this->order->id}/payments", [
+            'amount' => $total,
+            'method' => 'cash', 'receipt_confirmed' => true,
+        ])->assertCreated();
+
+        $firstCompletedAt = $this->order->fresh()->completed_at;
+        $this->assertNotNull($firstCompletedAt);
+
+        // Un recalcul tardif (par ex. après une modification externe) ne doit pas écraser la date
+        sleep(1);
+        $this->order->fresh()->recalculate();
+
+        $secondCompletedAt = $this->order->fresh()->completed_at;
+        $this->assertEquals(
+            $firstCompletedAt->toIso8601String(),
+            $secondCompletedAt->toIso8601String(),
+            'completed_at doit rester figé après le passage à paid'
+        );
     }
 }

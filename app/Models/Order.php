@@ -32,6 +32,7 @@ class Order extends Model
     protected $casts = [
         'metadata' => 'array',
         'confirmed_at' => 'datetime',
+        'completed_at' => 'datetime',
     ];
 
     protected static function boot()
@@ -177,7 +178,11 @@ class Order extends Model
         ]);
 
         if ($total > 0 && $due <= 0 && $this->status === 'served') {
-            $this->update(['status' => 'paid']);
+            $updates = ['status' => 'paid'];
+            if ($this->completed_at === null) {
+                $updates['completed_at'] = now();
+            }
+            $this->update($updates);
             $this->table()->first()?->syncCurrentOrder();
         }
     }
