@@ -16,7 +16,7 @@ class Restaurant extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'name', 'slug', 'email', 'phone', 'address', 'logo',
+        'id', 'name', 'slug', 'email', 'phone', 'address', 'logo', 'ifu', 'rccm',
         'currency', 'timezone', 'settings', 'payment_gateways', 'status', 'trial_ends_at',
     ];
 
@@ -48,5 +48,15 @@ class Restaurant extends Model
     public function orders()
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function taxEnabled(): bool
+    {
+        return (bool) ($this->settings['tax_enabled'] ?? true);
+    }
+
+    public function serviceChargeEnabled(): bool
+    {
+        return (bool) ($this->settings['service_charge_enabled'] ?? true);
     }
 }

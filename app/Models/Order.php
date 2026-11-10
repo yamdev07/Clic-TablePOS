@@ -153,13 +153,16 @@ class Order extends Model
 
     public function recalculate(): void
     {
-        // Les plats signalés en rupture ne sont plus facturés.
         $subtotal = $this->items()
             ->whereNull('out_of_stock_at')
             ->sum('total_price');
 
-        $tax = (int) ($subtotal * 0.18);
-        $serviceCharge = (int) ($subtotal * 0.05);
+        $restaurant = $this->restaurant()->first();
+        $taxEnabled = $restaurant?->taxEnabled() ?? true;
+        $serviceEnabled = $restaurant?->serviceChargeEnabled() ?? true;
+
+        $tax = $taxEnabled ? (int) ($subtotal * 0.18) : 0;
+        $serviceCharge = $serviceEnabled ? (int) ($subtotal * 0.05) : 0;
         $total = $subtotal + $tax + $serviceCharge;
 
         $paid = $this->payments()
