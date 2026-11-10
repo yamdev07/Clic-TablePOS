@@ -17,7 +17,7 @@ class Payment extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'order_id', 'user_id', 'amount', 'method', 'operator',
+        'id', 'order_id', 'user_id', 'payment_group_id', 'amount', 'method', 'operator',
         'reference', 'transaction_data', 'status',
     ];
 
@@ -44,5 +44,32 @@ class Payment extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Une même référence (restaurant + opérateur) est autorisée pour plusieurs paiements
+     * si et seulement s'ils partagent le même payment_group_id.
+     * Les paiements directs (payment_group_id null) restent soumis à l'unicité stricte.
+     */
+    public static function referenceAlreadyUsed(
+        string $restaurantId,
+        string $operator,
+        string $reference,
+        ?string $exceptGroupId = null
+    ): bool {
+        return self::where('operator', $operator)
+            ->where('reference', $reference)
+            ->whereIn('status', ['pending', 'completed'])
+            ->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId))
+            ->when($exceptGroupId === null,
+                // paiement direct : interdit si une autre utilisation existe, groupe ou pas
+                fn ($q) => $q,
+                // dans un groupe : interdit seulement si un autre groupe (ou direct) l'utilise
+                fn ($q) => $q->where(function ($q) use ($exceptGroupId) {
+                    $q->whereNull('payment_group_id')
+                        ->orWhere('payment_group_id', '!=', $exceptGroupId);
+                })
+            )
+            ->exists();
     }
 }

@@ -92,11 +92,11 @@ class PaymentController extends Controller
             }
 
             if ($isMobileMoney) {
-                $alreadyUsed = Payment::where('operator', $validated['operator'])
-                    ->where('reference', $validated['reference'])
-                    ->whereIn('status', ['pending', 'completed'])
-                    ->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId))
-                    ->exists();
+                $alreadyUsed = Payment::referenceAlreadyUsed(
+                    $restaurantId,
+                    $validated['operator'],
+                    $validated['reference'],
+                );
 
                 if ($alreadyUsed) {
                     throw ValidationException::withMessages([
