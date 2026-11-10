@@ -13,7 +13,7 @@ class Order extends Model
     /** Une commande open est un brouillon : elle n'est pas active. */
     public const ACTIVE_STATUSES = ['in_progress', 'ready', 'served'];
 
-    /** Un plat servi (ou sorti par une rupture) n'apparaît plus à l'écran de la cuisine. */
+    /** Un plat servi n'apparaît plus à l'écran de la cuisine, sauf s'il est signalé en rupture (out_of_stock_at). */
     public const KITCHEN_VISIBLE_ITEM_STATUSES = ['pending', 'cooking', 'ready'];
 
     use HasFactory;
@@ -23,7 +23,7 @@ class Order extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'restaurant_id', 'table_id', 'user_id', 'order_number', 'status', 'type', 'guest_count',
+        'id', 'restaurant_id', 'table_id', 'pending_collection_request_id', 'user_id', 'order_number', 'status', 'type', 'guest_count',
         'subtotal', 'tax', 'service_charge', 'discount', 'total',
         'paid_amount', 'due_amount', 'notes', 'metadata',
         'confirmed_at', 'completed_at',
@@ -86,6 +86,16 @@ class Order extends Model
     public function payments()
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function collectionRequests()
+    {
+        return $this->belongsToMany(CollectionRequest::class, 'collection_request_order');
+    }
+
+    public function pendingCollectionRequest()
+    {
+        return $this->belongsTo(CollectionRequest::class, 'pending_collection_request_id');
     }
 
     /** Étape à l'écran de la cuisine : pending, preparing, ready, ou null si la commande n'y figure pas. */
