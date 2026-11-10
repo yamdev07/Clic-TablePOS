@@ -94,6 +94,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Stats sidebar (1 appel au lieu de 2)
     Route::get('/stats', [StatsController::class, 'index']);
     Route::get('/stats/z-report', [StatsController::class, 'zReport']);
+    Route::post('/stats/z-report/close', [StatsController::class, 'close']);
 
     // Tableau de bord (admin et gérant)
     Route::get('/dashboard', [DashboardController::class, 'index']);
