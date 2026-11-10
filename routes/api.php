@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CollectionRequestController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\KitchenController;
 use App\Http\Controllers\Api\LogController;
@@ -74,6 +75,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment-numbers', [PaymentNumberController::class, 'store']);
     Route::patch('/payment-numbers/{paymentNumber}', [PaymentNumberController::class, 'update']);
     Route::delete('/payment-numbers/{paymentNumber}', [PaymentNumberController::class, 'destroy']);
+    // Demandes d'encaissement
+    Route::get('/collection-requests', [CollectionRequestController::class, 'index']);
+    Route::get('/collection-requests/{collectionRequest}', [CollectionRequestController::class, 'show']);
+    Route::post('/collection-requests', [CollectionRequestController::class, 'store']);
+    Route::delete('/collection-requests/{collectionRequest}', [CollectionRequestController::class, 'cancel']);
 
     // Stats sidebar (1 appel au lieu de 2)
     Route::get('/stats', [StatsController::class, 'index']);
