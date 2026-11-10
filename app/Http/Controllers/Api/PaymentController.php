@@ -78,6 +78,9 @@ class PaymentController extends Controller
             if ($locked->status !== 'served') {
                 $this->refuse('Une commande doit être servie avant de pouvoir être encaissée.');
             }
+            if ($locked->pending_collection_request_id !== null) {
+                $this->refuse("Cette commande est déjà dans une demande d'encaissement en attente.");
+            }
 
             // Espèces : le client peut donner plus que le dû (la monnaie est rendue). Mobile Money : jamais plus que le dû.
             $amountToRecord = $validated['amount'];
