@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CashController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CollectionRequestController;
 use App\Http\Controllers\Api\DashboardController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentNumberController;
+use App\Http\Controllers\Api\PaymentsHistoryController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\UserController;
@@ -70,6 +72,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payments
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store']);
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index']);
+    // Caisse
+    Route::get('/cash/summary', [CashController::class, 'summary']);
+    Route::get('/payments', [PaymentsHistoryController::class, 'index']);
     // Numéros Mobile Money du restaurant
     Route::get('/payment-numbers', [PaymentNumberController::class, 'index']);
     Route::post('/payment-numbers', [PaymentNumberController::class, 'store']);
