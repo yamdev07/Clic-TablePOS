@@ -79,7 +79,7 @@ class OrderRecalculateTest extends TestCase
         // Payer entièrement la première commande
         $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $this->order->fresh()->total,
-            'method' => 'cash',
+            'method' => 'cash', 'receipt_confirmed' => true,
         ])->assertCreated();
 
         $this->assertSame('paid', $this->order->fresh()->status);
@@ -121,7 +121,7 @@ class OrderRecalculateTest extends TestCase
 
         $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $total,
-            'method' => 'cash',
+            'method' => 'cash', 'receipt_confirmed' => true,
         ])->assertCreated();
 
         $this->assertSame('paid', $this->order->fresh()->status);

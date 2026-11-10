@@ -17,7 +17,7 @@ class Payment extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'order_id', 'user_id', 'amount', 'method',
+        'id', 'order_id', 'user_id', 'amount', 'method', 'operator',
         'reference', 'transaction_data', 'status',
     ];
 

@@ -118,8 +118,7 @@ class OrderTransitionsTest extends TestCase
     {
         $order = $this->order('cancelled', 1230);
 
-        $this->postJson("/api/orders/{$order->id}/payments", ['amount' => 1230, 'method' => 'cash'])
-            ->assertStatus(422)
+        $this->postJson("/api/orders/{$order->id}/payments", ['amount' => 1230, 'method' => 'cash', 'receipt_confirmed' => true])->assertStatus(422)
             ->assertJson(['message' => 'Cette commande est annulée : elle ne peut pas être encaissée.']);
 
         $this->assertSame('cancelled', $order->fresh()->status);
@@ -130,7 +129,7 @@ class OrderTransitionsTest extends TestCase
     {
         $order = $this->order('served', 1230);
 
-        $this->postJson("/api/orders/{$order->id}/payments", ['amount' => 1230, 'method' => 'cash'])
+        $this->postJson("/api/orders/{$order->id}/payments", ['amount' => 1230, 'method' => 'cash', 'receipt_confirmed' => true])
             ->assertCreated();
 
         $this->assertSame('paid', $order->fresh()->status);
@@ -248,7 +247,7 @@ class OrderTransitionsTest extends TestCase
 
             $this->postJson("/api/orders/{$order->id}/payments", [
                 'amount' => 1230,
-                'method' => 'cash',
+                'method' => 'cash', 'receipt_confirmed' => true,
             ])
                 ->assertStatus(422)
                 ->assertJson([

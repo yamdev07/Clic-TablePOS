@@ -85,6 +85,7 @@ class TableCurrentOrderTest extends TestCase
         $this->postJson("/api/orders/{$order->id}/payments", [
             'amount' => $order->fresh()->due_amount,
             'method' => 'cash',
+            'receipt_confirmed' => true,
         ])->assertCreated();
     }
 

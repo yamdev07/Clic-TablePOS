@@ -78,6 +78,7 @@ class PaymentTest extends TestCase
         $response = $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $due,
             'method' => 'cash',
+            'receipt_confirmed' => true,
         ]);
 
         $response->assertStatus(201);
@@ -99,6 +100,7 @@ class PaymentTest extends TestCase
             'amount' => $given,
             'method' => 'cash',
             'cash_given' => $given,
+            'receipt_confirmed' => true,
         ]);
 
         $response->assertStatus(201);
@@ -115,7 +117,10 @@ class PaymentTest extends TestCase
     {
         $response = $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $this->order->due_amount + 5000,
-            'method' => 'wave',
+            'method' => 'mobile_money',
+            'operator' => 'mtn_momo',
+            'reference' => 'MOM-OVER-001',
+            'receipt_confirmed' => true,
         ]);
 
         $response->assertStatus(422);
@@ -129,6 +134,7 @@ class PaymentTest extends TestCase
         $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $due,
             'method' => 'cash',
+            'receipt_confirmed' => true,
         ]);
 
         $this->assertDatabaseHas('orders', [
@@ -147,6 +153,7 @@ class PaymentTest extends TestCase
         $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $partial,
             'method' => 'cash',
+            'receipt_confirmed' => true,
         ]);
 
         $this->assertDatabaseHas('orders', [
@@ -163,12 +170,14 @@ class PaymentTest extends TestCase
         $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => $this->order->due_amount,
             'method' => 'cash',
+            'receipt_confirmed' => true,
         ]);
 
         // Deuxième tentative sur commande déjà soldée
         $response = $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => 1000,
             'method' => 'cash',
+            'receipt_confirmed' => true,
         ]);
 
         $response->assertStatus(422)
@@ -180,13 +189,16 @@ class PaymentTest extends TestCase
     {
         $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => 10000,
-            'method' => 'wave',
-            'reference' => 'WAVE-20240413-001',
-        ]);
+            'method' => 'mobile_money',
+            'operator' => 'moov_money',
+            'reference' => 'TX-MOOV-20260108-001',
+            'receipt_confirmed' => true,
+        ])->assertCreated();
 
         $this->assertDatabaseHas('payments', [
             'order_id' => $this->order->id,
-            'reference' => 'WAVE-20240413-001',
+            'reference' => 'TX-MOOV-20260108-001',
+            'operator' => 'moov_money',
         ]);
     }
 
@@ -196,6 +208,7 @@ class PaymentTest extends TestCase
         $response = $this->postJson("/api/orders/{$this->order->id}/payments", [
             'amount' => 5000,
             'method' => 'bitcoin',
+            'receipt_confirmed' => true,
         ]);
 
         $response->assertStatus(422);
