@@ -136,6 +136,7 @@ class Order extends Model
             'id' => $this->id,
             'order_number' => $this->order_number,
             'status' => $this->status,
+            'type' => $this->type,
             'table' => $table ? ['number' => $table->number] : null,
             'kitchen_stage' => $this->kitchenStage(),
             'items' => $items->map(fn ($item) => [

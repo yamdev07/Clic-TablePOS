@@ -78,44 +78,66 @@ class OrderController extends Controller
     {
         try {
             $request->validate([
-                'table_id' => 'required|exists:tables,id',
+                'type' => 'nullable|in:dine_in,takeaway',
+                'table_id' => 'nullable|exists:tables,id',
                 'guest_count' => 'nullable|integer|min:1|max:99',
             ]);
-            $table = Table::findOrFail($request->table_id);
 
-            if ((string) $table->restaurant_id !==
-                (string) $request->user()->restaurant_id) {
-                return response()->json([
-                    'message' => 'Cette table appartient à un autre restaurant.',
-                ], 404);
+            // Déduction du type
+            $type = $request->input('type');
+            $tableId = $request->input('table_id');
+
+            if ($type === 'delivery') {
+                return response()->json(['success' => false, 'message' => 'Les commandes de type delivery ne sont pas encore gérées.'], 422);
             }
-            if (! in_array($table->status, ['free', 'occupied'], true)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Table non disponible',
-                    'status' => $table->status,
-                ], 422);
+
+            if ($type === 'takeaway' && $tableId !== null) {
+                return response()->json(['success' => false, 'message' => 'Une commande à emporter ne peut pas avoir de table.'], 422);
+            }
+
+            if ($type === 'dine_in' && $tableId === null) {
+                return response()->json(['success' => false, 'message' => 'Une commande sur place nécessite une table.'], 422);
+            }
+
+            if ($type === null) {
+                $type = $tableId !== null ? 'dine_in' : 'takeaway';
+            }
+
+            $table = null;
+            if ($tableId !== null) {
+                $table = Table::findOrFail($tableId);
+                if ((string) $table->restaurant_id !== (string) $request->user()->restaurant_id) {
+                    return response()->json(['message' => 'Cette table appartient à un autre restaurant.'], 404);
+                }
+                if (! in_array($table->status, ['free', 'occupied'], true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Table non disponible',
+                        'status' => $table->status,
+                    ], 422);
+                }
             }
 
             $order = Order::create([
                 'id' => (string) Str::uuid(),
                 'restaurant_id' => $request->user()->restaurant_id,
-                'table_id' => $table->id,
+                'table_id' => $table?->id,
+                'type' => $type,
                 'user_id' => $request->user()->id,
                 'status' => 'open',
                 'guest_count' => $request->guest_count,
             ]);
 
             LogService::log($request, 'order.created',
-                "Commande #{$order->order_number} créée — Table {$table->number}",
+                "Commande #{$order->order_number} créée".($table ? " — Table {$table->number}" : ' — À emporter'),
                 'order', $order->id);
 
             return response()->json(['success' => true, 'data' => $order->load('items')], 201);
-
         } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return $this->internalError($e);        }
+            return $this->internalError($e);
+        }
     }
 
     public function addItem(Request $request, Order $order)
@@ -161,7 +183,8 @@ class OrderController extends Controller
         } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return $this->internalError($e);        }
+            return $this->internalError($e);
+        }
     }
 
     public function removeItem(Request $request, Order $order, $itemId)
@@ -182,7 +205,8 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'message' => 'Item supprimé']);
 
         } catch (\Exception $e) {
-            return $this->internalError($e);        }
+            return $this->internalError($e);
+        }
     }
 
     public function confirm(Request $request, Order $order)
@@ -204,7 +228,8 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'message' => 'Commande confirmée']);
 
         } catch (\Exception $e) {
-            return $this->internalError($e);        }
+            return $this->internalError($e);
+        }
     }
 
     public function cancel(Request $request, Order $order)
@@ -231,7 +256,8 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'message' => 'Commande envoyée en cuisine']);
 
         } catch (\Exception $e) {
-            return $this->internalError($e);        }
+            return $this->internalError($e);
+        }
     }
 
     public function updateStatus(Request $request, Order $order)
@@ -392,7 +418,8 @@ class OrderController extends Controller
 
         return response()->json(['success' => true, 'message' => 'Commande annulée', 'data' => $order]);
     }
-        /** Erreur inattendue : le détail va dans les journaux du serveur, jamais au client. */
+
+    /** Erreur inattendue : le détail va dans les journaux du serveur, jamais au client. */
     private function internalError(\Throwable $e)
     {
         report($e);
