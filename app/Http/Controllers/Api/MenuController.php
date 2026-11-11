@@ -47,7 +47,11 @@ class MenuController extends Controller
     {
         $this->ensureMenuItemBelongsToRestaurant($request, $item);
 
-        return response()->json($item->load('category'));
+        $item->load(['category', 'options' => function ($q) {
+            $q->orderBy('type')->orderBy('display_order')->orderBy('name');
+        }]);
+
+        return response()->json($item);
     }
 
     public function store(Request $request)

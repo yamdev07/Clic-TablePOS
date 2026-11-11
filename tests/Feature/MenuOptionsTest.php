@@ -4,12 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\MenuItem;
-use App\Models\MenuItemOption;
 use App\Models\Restaurant;
 use App\Models\RestaurantSupplement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -76,7 +74,7 @@ class MenuOptionsTest extends TestCase
         ]);
     }
 
-    private function makeDish(Category $category = null): MenuItem
+    private function makeDish(?Category $category = null): MenuItem
     {
         return MenuItem::factory()->create([
             'restaurant_id' => $this->restaurant->id,
@@ -270,5 +268,36 @@ class MenuOptionsTest extends TestCase
         $this->actingAsAdmin();
         $this->postJson('/api/supplements', ['name' => 'X', 'price_delta' => -100])
             ->assertStatus(422);
+    }
+    // ------------------------------------------------------------------
+    // 9. GET /api/menu/{item} expose les options
+    // ------------------------------------------------------------------
+
+    public function test_menu_item_show_exposes_its_options(): void
+    {
+        $this->actingAsAdmin();
+        $dish = $this->makeDish();
+        $bissap = $this->makeDrink('Bissap Frais', 1500);
+
+        $this->patchJson("/api/menu/{$dish->id}", [
+            'options' => [
+                ['type' => 'required_single', 'name' => 'Pimenté', 'price_delta' => 0],
+                ['type' => 'required_single', 'name' => 'Non pimenté / Doux', 'price_delta' => 0],
+                ['type' => 'optional_single', 'name' => 'Bissap Frais', 'price_delta' => 0, 'linked_menu_item_id' => $bissap->id],
+            ],
+        ])->assertOk();
+
+        $response = $this->getJson("/api/menu/{$dish->id}")->assertOk();
+        $data = $response->json();
+
+        $this->assertArrayHasKey('options', $data);
+        $this->assertCount(3, $data['options']);
+
+        $types = collect($data['options'])->pluck('type');
+        $this->assertSame(2, $types->filter(fn ($t) => $t === 'required_single')->count());
+        $this->assertSame(1, $types->filter(fn ($t) => $t === 'optional_single')->count());
+
+        $bissapOption = collect($data['options'])->firstWhere('name', 'Bissap Frais');
+        $this->assertSame($bissap->id, $bissapOption['linked_menu_item_id']);
     }
 }
