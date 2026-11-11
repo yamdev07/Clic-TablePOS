@@ -2,15 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\Category;
 use App\Models\Invoice;
 use App\Models\MenuItem;
-use App\Models\MenuItemOption;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemOption;
 use App\Models\Restaurant;
-use App\Models\RestaurantSupplement;
 use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -174,7 +171,7 @@ class ReceiptTest extends TestCase
         $this->assertCount(1, $data['items']);
         $this->assertSame('Yassa au Poulet Fermier', $data['items'][0]['name']);
         $this->assertSame(5500, $data['items'][0]['unit_price']);
-        $this->assertSame(6435, $data['items'][0]['line_total']); // 5500 + 18% + 5%
+        $this->assertSame(5500, $data['items'][0]['line_total']); // 5500 HT (les taxes sont dans totals)
 
         // Totals
         $this->assertSame(5500, $data['totals']['subtotal']);

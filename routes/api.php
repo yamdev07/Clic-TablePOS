@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentNumberController;
 use App\Http\Controllers\Api\PaymentsHistoryController;
+use App\Http\Controllers\Api\ReceiptController;
 use App\Http\Controllers\Api\RestaurantSettingsController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SupplementController;
@@ -69,7 +70,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{order}/confirm', [OrderController::class, 'confirm']);
     Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel']);
     Route::post('/orders/{order}/send-to-kitchen', [OrderController::class, 'sendToKitchen']);
-    Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']); // ← AJOUTÉ
+    Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+    // Facture
+    Route::get('/orders/{order}/receipt', [ReceiptController::class, 'show']);
 
     // Kitchen
     Route::get('/kitchen/pending', [KitchenController::class, 'pendingOrders']);
