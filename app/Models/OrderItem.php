@@ -18,7 +18,7 @@ class OrderItem extends Model
 
     protected $fillable = [
         'id', 'order_id', 'menu_item_id', 'item_name', 'item_description',
-        'quantity', 'unit_price', 'total_price', 'kitchen_status',
+        'quantity', 'unit_price', 'total_price', 'kitchen_status', 'options_total',
         'special_instructions', 'modifiers', 'ready_at', 'started_at', 'out_of_stock_at',
     ];
 
@@ -26,6 +26,7 @@ class OrderItem extends Model
         'ready_at' => 'datetime',
         'started_at' => 'datetime',
         'out_of_stock_at' => 'datetime',
+        'options_total' => 'integer',
     ];
 
     protected static function boot()
@@ -62,5 +63,10 @@ class OrderItem extends Model
     public function markAsServed()
     {
         $this->update(['kitchen_status' => 'served']);
+    }
+
+    public function options()
+    {
+        return $this->hasMany(OrderItemOption::class);
     }
 }

@@ -148,6 +148,11 @@ class Order extends Model
                 'special_instructions' => $item->special_instructions,
                 'started_at' => $item->started_at?->toISOString(),
                 'ready_at' => $item->ready_at?->toISOString(),
+                'options' => $item->options->map(fn ($opt) => [
+                    'name' => $opt->name,
+                    'price_delta' => $opt->price_delta,
+                    'source_type' => $opt->source_type,
+                ])->all(),
             ])->all(),
         ];
     }

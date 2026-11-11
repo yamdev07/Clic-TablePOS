@@ -8,7 +8,10 @@ use App\Events\OrderCancelled;
 use App\Events\OrderStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Models\MenuItem;
+use App\Models\MenuItemOption;
 use App\Models\Order;
+use App\Models\OrderItemOption;
+use App\Models\RestaurantSupplement;
 use App\Models\Table;
 use App\Services\LogService;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -144,11 +147,16 @@ class OrderController extends Controller
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
         $this->ensureOrderIsEditable($order);
+
         try {
             $request->validate([
                 'menu_item_id' => 'required|exists:menu_items,id',
                 'quantity' => 'integer|min:1',
                 'special_instructions' => 'nullable|string|max:500',
+                'options' => 'nullable|array',
+                'options.*.menu_item_option_id' => 'required|uuid',
+                'supplements' => 'nullable|array',
+                'supplements.*.restaurant_supplement_id' => 'required|uuid',
             ]);
 
             $menuItem = MenuItem::findOrFail($request->menu_item_id);
@@ -159,18 +167,115 @@ class OrderController extends Controller
                     'message' => 'Cet article appartient à un autre restaurant.',
                 ], 404);
             }
+
             $quantity = $request->quantity ?? 1;
+            $restaurantId = $request->user()->restaurant_id;
+
+            // Valider les options
+            $optionIds = collect($request->input('options', []))->pluck('menu_item_option_id')->all();
+            $options = MenuItemOption::whereIn('id', $optionIds)->get()->keyBy('id');
+
+            // Toutes les options doivent exister ET appartenir au plat
+            foreach ($optionIds as $id) {
+                $opt = $options->get($id);
+                if (! $opt || (string) $opt->menu_item_id !== (string) $menuItem->id) {
+                    return response()->json(['message' => 'Option invalide pour ce plat.'], 422);
+                }
+            }
+
+            // Valider les règles métier (required_single, optional_single)
+            $categorySlug = $menuItem->category?->slug;
+            $requiresPiment = in_array($categorySlug, ['plats-principaux', 'grillades'], true);
+
+            if ($requiresPiment) {
+                $requiredCount = $options->where('type', 'required_single')->count();
+                if ($requiredCount !== 1) {
+                    return response()->json([
+                        'message' => 'Vous devez choisir exactement une option obligatoire (ex : Pimenté / Non pimenté).',
+                    ], 422);
+                }
+
+                $optionalSingleCount = $options->where('type', 'optional_single')->count();
+                if ($optionalSingleCount > 1) {
+                    return response()->json([
+                        'message' => "Vous ne pouvez choisir qu'une seule option parmi les boissons.",
+                    ], 422);
+                }
+            }
+
+            // Suppléments : uniquement sur plats-principaux / grillades
+            $supplementIds = collect($request->input('supplements', []))
+                ->pluck('restaurant_supplement_id')->all();
+
+            if (! empty($supplementIds) && ! $requiresPiment) {
+                return response()->json([
+                    'message' => 'Les suppléments ne sont disponibles que pour les plats principaux et les grillades.',
+                ], 422);
+            }
+
+            $supplements = RestaurantSupplement::whereIn('id', $supplementIds)
+                ->where('restaurant_id', $restaurantId)
+                ->get()->keyBy('id');
+
+            if (count($supplements) !== count(array_unique($supplementIds))) {
+                return response()->json(['message' => 'Un ou plusieurs suppléments sont introuvables.'], 422);
+            }
+
+            // Calcul des prix
+            $basePrice = $menuItem->price;
+            $optionsUnitDelta = 0;
+            $frozenOptions = []; // à copier dans order_item_options
+
+            foreach ($options as $opt) {
+                $priceDelta = 0;
+                if ($opt->linked_menu_item_id) {
+                    // Boisson : lire le prix du menu_item lié
+                    $linked = MenuItem::find($opt->linked_menu_item_id);
+                    $priceDelta = $linked?->price ?? 0;
+                } else {
+                    $priceDelta = $opt->price_delta;
+                }
+                $optionsUnitDelta += $priceDelta;
+                $frozenOptions[] = [
+                    'source_type' => OrderItemOption::SOURCE_MENU_OPTION,
+                    'source_id' => $opt->id,
+                    'name' => $opt->name,
+                    'price_delta' => $priceDelta,
+                    'quantity' => 1,
+                ];
+            }
+
+            foreach ($supplements as $supp) {
+                $optionsUnitDelta += $supp->price_delta;
+                $frozenOptions[] = [
+                    'source_type' => OrderItemOption::SOURCE_SUPPLEMENT,
+                    'source_id' => $supp->id,
+                    'name' => $supp->name,
+                    'price_delta' => $supp->price_delta,
+                    'quantity' => 1,
+                ];
+            }
+
+            $unitPrice = $basePrice;
+            $totalPrice = ($basePrice + $optionsUnitDelta) * $quantity;
+            $optionsTotal = $optionsUnitDelta * $quantity;
 
             $orderItem = $order->items()->create([
                 'id' => (string) Str::uuid(),
                 'menu_item_id' => $menuItem->id,
                 'item_name' => $menuItem->name,
                 'quantity' => $quantity,
-                'unit_price' => $menuItem->price,
-                'total_price' => $menuItem->price * $quantity,
+                'unit_price' => $unitPrice,
+                'total_price' => $totalPrice,
+                'options_total' => $optionsTotal,
                 'kitchen_status' => 'pending',
                 'special_instructions' => $request->special_instructions,
             ]);
+
+            // Copier les options figées
+            foreach ($frozenOptions as $frozen) {
+                $orderItem->options()->create($frozen);
+            }
 
             $order->recalculate();
 
@@ -178,7 +283,7 @@ class OrderController extends Controller
                 "Ajout x{$quantity} {$menuItem->name} → commande #{$order->order_number}",
                 'order', $order->id);
 
-            return response()->json(['success' => true, 'data' => $orderItem], 201);
+            return response()->json(['success' => true, 'data' => $orderItem->load('options')], 201);
 
         } catch (ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Erreur de validation', 'errors' => $e->errors()], 422);
