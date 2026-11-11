@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\PaymentNumberController;
 use App\Http\Controllers\Api\PaymentsHistoryController;
 use App\Http\Controllers\Api\RestaurantSettingsController;
 use App\Http\Controllers\Api\StatsController;
+use App\Http\Controllers\Api\SupplementController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -51,9 +52,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/menu', [MenuController::class, 'index']);
     Route::get('/menu/{item}', [MenuController::class, 'show']);
     Route::post('/menu', [MenuController::class, 'store']);
-    Route::put('/menu/{item}', [MenuController::class, 'update']);
+    Route::match(['put', 'patch'], '/menu/{item}', [MenuController::class, 'update']);
     Route::delete('/menu/{item}', [MenuController::class, 'destroy']);
     Route::patch('/menu/{item}/availability', [MenuController::class, 'toggleAvailability']);
+    // Suppléments partagés
+    Route::get('/supplements', [SupplementController::class, 'index']);
+    Route::post('/supplements', [SupplementController::class, 'store']);
+    Route::delete('/supplements/{supplement}', [SupplementController::class, 'destroy']);
 
     // Orders
     Route::get('/orders', [OrderController::class, 'index']);

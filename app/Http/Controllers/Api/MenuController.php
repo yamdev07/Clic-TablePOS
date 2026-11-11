@@ -82,6 +82,7 @@ class MenuController extends Controller
     public function update(Request $request, MenuItem $item)
     {
         $this->ensureMenuItemBelongsToRestaurant($request, $item);
+
         $request->validate([
             'category_id' => [
                 'sometimes',
@@ -89,15 +90,63 @@ class MenuController extends Controller
                 Rule::exists('categories', 'id')
                     ->where('restaurant_id', $request->user()->restaurant_id),
             ],
+            'options' => 'nullable|array',
+            'options.*.type' => 'required|in:required_single,optional_single,optional_multi',
+            'options.*.name' => 'required|string|max:100',
+            'options.*.price_delta' => 'required|integer|min:0',
+            'options.*.linked_menu_item_id' => 'nullable|uuid|exists:menu_items,id',
         ]);
+
         $old = $item->only(['name', 'price']);
         $item->update($request->only(['name', 'price', 'category_id', 'description', 'preparation_time']));
+
+        // Gestion des options si fournies
+        if ($request->has('options')) {
+            $this->syncOptions($request, $item, $request->input('options', []));
+        }
 
         LogService::log($request, 'menu.item_updated',
             "Article \"{$item->name}\" modifié",
             'menu_item', $item->id, $old, $item->only(['name', 'price']));
 
-        return response()->json($item);
+        return response()->json($item->fresh()->load('options'));
+    }
+
+    /**
+     * Remplace les options d'un plat.
+     * Valide la règle métier : un plat dans les catégories "plats-principaux" ou "grillades"
+     * doit avoir au moins une option required_single.
+     */
+    private function syncOptions(Request $request, MenuItem $item, array $options): void
+    {
+        // Règle métier : vérifier les catégories sensibles
+        $categorySlug = $item->category?->slug;
+        $requiresPiment = in_array($categorySlug, ['plats-principaux', 'grillades'], true);
+
+        if ($requiresPiment) {
+            $hasRequired = collect($options)->contains(fn ($opt) => $opt['type'] === 'required_single');
+            if (! $hasRequired) {
+                abort(response()->json([
+                    'message' => "Un plat dans la catégorie \"{$item->category->name}\" doit avoir au moins une option obligatoire (par exemple : Pimenté / Non pimenté).",
+                ], 422));
+            }
+        }
+
+        // Supprimer les options existantes
+        $item->options()->delete();
+
+        // Recréer
+        foreach ($options as $index => $opt) {
+            $item->options()->create([
+                'id' => (string) Str::uuid(),
+                'type' => $opt['type'],
+                'name' => $opt['name'],
+                'price_delta' => $opt['price_delta'] ?? 0,
+                'linked_menu_item_id' => $opt['linked_menu_item_id'] ?? null,
+                'display_order' => $index,
+                'is_available' => true,
+            ]);
+        }
     }
 
     public function destroy(MenuItem $item, Request $request)
