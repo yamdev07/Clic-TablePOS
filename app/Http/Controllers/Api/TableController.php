@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\TableLayoutChanged;
 use App\Http\Controllers\Controller;
 use App\Models\Table;
 use App\Services\LogService;
@@ -20,6 +21,16 @@ class TableController extends Controller
             (string) $request->user()->restaurant_id,
             404
         );
+    }
+
+    /** Broadcast silencieux — ne casse pas la réponse si Reverb est absent. */
+    private function tryBroadcast(callable $fn): void
+    {
+        try {
+            $fn();
+        } catch (\Throwable) {
+            // Reverb indisponible — le polling frontend compensera
+        }
     }
 
     public function index(Request $request)
@@ -184,6 +195,14 @@ class TableController extends Controller
         LogService::log($request, 'tables.layout_updated',
             'Layout mis à jour ('.count($validated['tables']).' tables)',
             'table', null);
+        $this->tryBroadcast(fn () => broadcast(new TableLayoutChanged(
+            restaurantId: $restaurantId,
+            action: 'moved',
+            tableId: null,
+            data: ['tables' => $validated['tables']],
+            triggeredBy: $request->user()->id,
+            triggeredByName: $request->user()->name,
+        ))->toOthers());
 
         return response()->json(['success' => true, 'updated' => count($validated['tables'])]);
     }
@@ -209,8 +228,17 @@ class TableController extends Controller
             "Table {$table->number} pivotée : {$old}° → {$validated['rotation']}°",
             'table', $table->id,
             ['rotation' => $old], ['rotation' => $validated['rotation']]);
+        $this->tryBroadcast(fn () => broadcast(new TableLayoutChanged(
+            restaurantId: $request->user()->restaurant_id,
+            action: 'rotated',
+            tableId: $table->id,
+            data: ['rotation' => $table->rotation],
+            triggeredBy: $request->user()->id,
+            triggeredByName: $request->user()->name,
+        ))->toOthers());
 
         return response()->json($table);
+
     }
 
     public function updateModel(Request $request, Table $table)
@@ -237,6 +265,17 @@ class TableController extends Controller
         LogService::log($request, 'table.model_changed',
             "Modèle de la table {$table->number} : {$validated['shape']} {$validated['size_label']}",
             'table', $table->id, $old, $table->only(['shape', 'size_label']));
+        $this->tryBroadcast(fn () => broadcast(new TableLayoutChanged(
+            restaurantId: $request->user()->restaurant_id,
+            action: 'model_changed',
+            tableId: $table->id,
+            data: [
+                'shape' => $table->shape,
+                'size_label' => $table->size_label,
+            ],
+            triggeredBy: $request->user()->id,
+            triggeredByName: $request->user()->name,
+        ))->toOthers());
 
         return response()->json($table);
     }
