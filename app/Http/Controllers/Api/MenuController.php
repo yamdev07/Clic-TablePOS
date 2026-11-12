@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,9 +30,32 @@ class MenuController extends Controller
     {
         $restaurantId = $request->user()->restaurant_id;
 
+        $request->validate([
+            'orders_count_period' => 'nullable|in:30,all',
+        ]);
+        $period = $request->input('orders_count_period', '30');
+
+        // 1 requête agrégée : nombre de commandes par plat sur la période
+        $countQuery = OrderItem::query()
+            ->selectRaw('menu_item_id, COUNT(DISTINCT order_id) as orders_count')
+            ->whereHas('order', function ($q) use ($restaurantId, $period) {
+                $q->where('restaurant_id', $restaurantId)
+                    ->where('status', '!=', 'cancelled');
+
+                if ($period === '30') {
+                    $q->where('created_at', '>=', now()->subDays(30));
+                }
+            })
+            ->groupBy('menu_item_id');
+
+        $ordersCountByItem = $countQuery->pluck('orders_count', 'menu_item_id');
+
         $categories = Category::with(['menuItems' => function ($q) {
             $q->where('is_active', true)
-                ->select('id', 'category_id', 'restaurant_id', 'name', 'description', 'price', 'preparation_time', 'is_available', 'display_order')
+                ->select(
+                    'id', 'category_id', 'restaurant_id', 'name', 'description',
+                    'price', 'preparation_time', 'is_available', 'display_order'
+                )
                 ->orderBy('display_order');
         }])
             ->where('restaurant_id', $restaurantId)
@@ -39,6 +63,13 @@ class MenuController extends Controller
             ->select('id', 'restaurant_id', 'name', 'slug', 'icon', 'color', 'display_order')
             ->orderBy('display_order')
             ->get();
+
+        // Ajouter orders_count sur chaque plat
+        $categories->each(function (Category $category) use ($ordersCountByItem) {
+            $category->menuItems->each(function (MenuItem $item) use ($ordersCountByItem) {
+                $item->setAttribute('orders_count', (int) ($ordersCountByItem[$item->id] ?? 0));
+            });
+        });
 
         return response()->json($categories);
     }
