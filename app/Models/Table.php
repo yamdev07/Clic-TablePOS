@@ -16,7 +16,7 @@ class Table extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'restaurant_id', 'number', 'name', 'capacity', 'status',
+        'id', 'restaurant_id', 'number', 'name', 'capacity', 'status', 'rotation',
         'current_order_id', 'x_position', 'y_position', 'qr_code', 'metadata',
     ];
 
@@ -55,7 +55,8 @@ class Table extends Model
             'current_order_id' => null,
         ]);
     }
-        /**
+
+    /**
      * Recalcule l'état de la table d'après ses commandes actives.
      * Elle pointe vers la plus ancienne commande active ; s'il n'y en a aucune, elle est libérée.
      */

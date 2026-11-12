@@ -187,4 +187,29 @@ class TableController extends Controller
 
         return response()->json(['success' => true, 'updated' => count($validated['tables'])]);
     }
+
+    public function rotate(Request $request, Table $table)
+    {
+        $this->ensureTableBelongsToRestaurant($request, $table);
+
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager', 'waiter'], true),
+            403,
+            "Seuls l'administrateur, le gérant et le serveur peuvent pivoter une table."
+        );
+
+        $validated = $request->validate([
+            'rotation' => 'required|integer|in:0,90',
+        ]);
+
+        $old = $table->rotation;
+        $table->update(['rotation' => $validated['rotation']]);
+
+        LogService::log($request, 'table.rotated',
+            "Table {$table->number} pivotée : {$old}° → {$validated['rotation']}°",
+            'table', $table->id,
+            ['rotation' => $old], ['rotation' => $validated['rotation']]);
+
+        return response()->json($table);
+    }
 }

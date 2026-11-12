@@ -122,8 +122,10 @@ class TableRotationTest extends TestCase
         $this->actingAsRole('admin');
         $table = $this->makeTable();
 
-        foreach ([45, 180, -90, 'abc', 270] as $invalid) {
-            $this->rotate($table, (int) $invalid)->assertStatus(422);
+        foreach ([45, 180, -90, 270, 'abc', null] as $invalid) {
+            $this->patchJson("/api/tables/{$table->id}/rotate", [
+                'rotation' => $invalid,
+            ])->assertStatus(422);
         }
 
         $this->assertSame(0, $table->fresh()->rotation);
