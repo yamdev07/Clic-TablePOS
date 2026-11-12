@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Table;
 use App\Services\LogService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class TableController extends Controller
@@ -127,5 +128,63 @@ class TableController extends Controller
             ['status' => $old], ['status' => $request->status]);
 
         return response()->json($table);
+    }
+
+    public function layout(Request $request)
+    {
+        $tables = Table::where('restaurant_id', $request->user()->restaurant_id)
+            ->orderBy('number')
+            ->get();
+
+        return response()->json($tables);
+    }
+
+    public function updateLayout(Request $request)
+    {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager'], true),
+            403,
+            "Seuls l'administrateur et le gérant peuvent déplacer les tables."
+        );
+
+        $validated = $request->validate([
+            'tables' => 'required|array|min:1|max:50',
+            'tables.*.id' => 'required|uuid',
+            'tables.*.x_position' => 'required|integer|min:0|max:2000',
+            'tables.*.y_position' => 'required|integer|min:0|max:2000',
+        ]);
+
+        $restaurantId = $request->user()->restaurant_id;
+
+        // 1) Vérifier que toutes les tables appartiennent au restaurant
+        $tableIds = collect($validated['tables'])->pluck('id')->all();
+        $existing = Table::where('restaurant_id', $restaurantId)
+            ->whereIn('id', $tableIds)
+            ->pluck('id')
+            ->all();
+
+        if (count($existing) !== count(array_unique($tableIds))) {
+            return response()->json([
+                'message' => 'Une ou plusieurs tables sont introuvables.',
+            ], 422);
+        }
+
+        // 2) Transaction : tout ou rien
+        DB::transaction(function () use ($validated, $restaurantId) {
+            foreach ($validated['tables'] as $entry) {
+                Table::where('id', $entry['id'])
+                    ->where('restaurant_id', $restaurantId)
+                    ->update([
+                        'x_position' => $entry['x_position'],
+                        'y_position' => $entry['y_position'],
+                    ]);
+            }
+        });
+
+        LogService::log($request, 'tables.layout_updated',
+            'Layout mis à jour ('.count($validated['tables']).' tables)',
+            'table', null);
+
+        return response()->json(['success' => true, 'updated' => count($validated['tables'])]);
     }
 }

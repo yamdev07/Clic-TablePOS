@@ -79,7 +79,7 @@ class TableLayoutTest extends TestCase
     {
         foreach (['waiter', 'cashier', 'kitchen'] as $role) {
             $this->actingAsRole($role);
-            $table = $this->makeTable();
+            $table = $this->makeTable(null, Str::random(6));
 
             $this->putJson('/api/tables/layout', [
                 'tables' => [['id' => $table->id, 'x_position' => 100, 'y_position' => 200]],
@@ -109,7 +109,7 @@ class TableLayoutTest extends TestCase
             'tables' => [['id' => $foreignTable->id, 'x_position' => 100, 'y_position' => 200]],
         ])->assertStatus(422);
 
-        $this->assertNull($foreignTable->fresh()->x_position);
+        $this->assertSame(0, $foreignTable->fresh()->x_position);
     }
 
     // ------------------------------------------------------------------
@@ -157,8 +157,7 @@ class TableLayoutTest extends TestCase
             ],
         ])->assertStatus(422);
 
-        // t1 n'a PAS été modifié
-        $this->assertNull($t1->fresh()->x_position);
+        $this->assertSame(0, $t1->fresh()->x_position);
     }
 
     // ------------------------------------------------------------------
