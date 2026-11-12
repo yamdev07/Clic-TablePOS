@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\TableLayoutChanged;
+use App\Events\TableStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Models\Table;
 use App\Services\LogService;
@@ -131,12 +132,25 @@ class TableController extends Controller
         ]);
 
         $old = $table->status;
+
+        if ($old === $request->status) {
+            return response()->json($table);
+        }
+
         $table->update(['status' => $request->status]);
 
         LogService::log($request, 'table.status_changed',
             "Table {$table->number} : {$old} → {$request->status}",
             'table', $table->id,
             ['status' => $old], ['status' => $request->status]);
+
+        $this->tryBroadcast(fn () => event(new TableStatusChanged(
+            restaurantId: $table->restaurant_id,
+            tableId: $table->id,
+            number: $table->number,
+            status: $table->status,
+            currentOrderId: $table->current_order_id,
+        )));
 
         return response()->json($table);
     }

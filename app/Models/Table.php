@@ -4,8 +4,10 @@
 
 namespace App\Models;
 
+use App\Events\TableStatusChanged;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Table extends Model
 {
@@ -42,18 +44,28 @@ class Table extends Model
 
     public function occupy(Order $order)
     {
+        $oldStatus = $this->status;
+        $oldOrderId = $this->current_order_id;
+
         $this->update([
             'status' => 'occupied',
             'current_order_id' => $order->id,
         ]);
+
+        $this->dispatchStatusChangedIfNeeded($oldStatus, $oldOrderId);
     }
 
     public function free()
     {
+        $oldStatus = $this->status;
+        $oldOrderId = $this->current_order_id;
+
         $this->update([
             'status' => 'free',
             'current_order_id' => null,
         ]);
+
+        $this->dispatchStatusChangedIfNeeded($oldStatus, $oldOrderId);
     }
 
     /**
@@ -68,10 +80,46 @@ class Table extends Model
             ->orderBy('id')
             ->first();
 
+        $oldStatus = $this->status;
+        $oldOrderId = $this->current_order_id;
+
         if ($current) {
             $this->update(['status' => 'occupied', 'current_order_id' => $current->id]);
         } else {
             $this->update(['status' => 'free', 'current_order_id' => null]);
+        }
+
+        $this->dispatchStatusChangedIfNeeded($oldStatus, $oldOrderId);
+    }
+
+    private function dispatchStatusChangedIfNeeded(string $oldStatus, ?string $oldOrderId): void
+    {
+        $this->refresh();
+
+        if ($oldStatus === $this->status && $oldOrderId === $this->current_order_id) {
+            return;
+        }
+
+        $event = new TableStatusChanged(
+            restaurantId: $this->restaurant_id,
+            tableId: $this->id,
+            number: $this->number,
+            status: $this->status,
+            currentOrderId: $this->current_order_id,
+        );
+
+        $dispatch = function () use ($event) {
+            try {
+                event($event);
+            } catch (\Throwable) {
+                // Reverb indisponible — le polling frontend compensera
+            }
+        };
+
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit($dispatch);
+        } else {
+            $dispatch();
         }
     }
 }
