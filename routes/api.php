@@ -42,6 +42,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tables/layout', [TableController::class, 'layout']);
     Route::put('/tables/layout', [TableController::class, 'updateLayout']);
     Route::patch('/tables/{table}/rotate', [TableController::class, 'rotate']);
+    Route::patch('/tables/{table}/model', [TableController::class, 'updateModel']);
     Route::get('/tables/{table}', [TableController::class, 'show']);
     Route::post('/tables', [TableController::class, 'store']);
     Route::put('/tables/{table}', [TableController::class, 'update']);

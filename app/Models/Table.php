@@ -16,7 +16,7 @@ class Table extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'restaurant_id', 'number', 'name', 'capacity', 'status', 'rotation',
+        'id', 'restaurant_id', 'number', 'name', 'capacity', 'status', 'rotation', 'shape', 'size_label',
         'current_order_id', 'x_position', 'y_position', 'qr_code', 'metadata',
     ];
 

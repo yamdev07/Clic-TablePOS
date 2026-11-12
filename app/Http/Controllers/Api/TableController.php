@@ -212,4 +212,32 @@ class TableController extends Controller
 
         return response()->json($table);
     }
+
+    public function updateModel(Request $request, Table $table)
+    {
+        $this->ensureTableBelongsToRestaurant($request, $table);
+
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager'], true),
+            403,
+            "Seuls l'administrateur et le gérant peuvent modifier le modèle d'une table."
+        );
+
+        $validated = $request->validate([
+            'shape' => ['required', 'string', 'in:round,square,rectangle,banquette,oval'],
+            'size_label' => ['required', 'string', 'max:30'],
+        ]);
+
+        $old = $table->only(['shape', 'size_label']);
+        $table->update([
+            'shape' => $validated['shape'],
+            'size_label' => $validated['size_label'],
+        ]);
+
+        LogService::log($request, 'table.model_changed',
+            "Modèle de la table {$table->number} : {$validated['shape']} {$validated['size_label']}",
+            'table', $table->id, $old, $table->only(['shape', 'size_label']));
+
+        return response()->json($table);
+    }
 }
