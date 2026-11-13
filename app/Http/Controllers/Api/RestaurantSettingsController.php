@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\LogService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class RestaurantSettingsController extends Controller
 {
@@ -54,28 +55,28 @@ class RestaurantSettingsController extends Controller
 
         $restaurant = $request->user()->restaurant;
 
-        // Champs directs (identité fiscale)
-        $direct = array_filter(
-            $validated,
-            fn ($key) => in_array($key, ['ifu', 'rccm', 'phone', 'address'], true),
-            ARRAY_FILTER_USE_KEY
-        );
+        DB::transaction(function () use ($validated, $restaurant) {
+            $direct = array_filter(
+                $validated,
+                fn ($key) => in_array($key, ['ifu', 'rccm', 'phone', 'address'], true),
+                ARRAY_FILTER_USE_KEY
+            );
 
-        if (! empty($direct)) {
-            $restaurant->update($direct);
-        }
+            if (! empty($direct)) {
+                $restaurant->update($direct);
+            }
 
-        // Champs JSON (settings)
-        $settings = is_array($restaurant->settings) ? $restaurant->settings : [];
+            $settings = is_array($restaurant->settings) ? $restaurant->settings : [];
 
-        if (array_key_exists('tax_enabled', $validated) && $validated['tax_enabled'] !== null) {
-            $settings['tax_enabled'] = (bool) $validated['tax_enabled'];
-        }
-        if (array_key_exists('service_charge_enabled', $validated) && $validated['service_charge_enabled'] !== null) {
-            $settings['service_charge_enabled'] = (bool) $validated['service_charge_enabled'];
-        }
+            if (array_key_exists('tax_enabled', $validated) && $validated['tax_enabled'] !== null) {
+                $settings['tax_enabled'] = (bool) $validated['tax_enabled'];
+            }
+            if (array_key_exists('service_charge_enabled', $validated) && $validated['service_charge_enabled'] !== null) {
+                $settings['service_charge_enabled'] = (bool) $validated['service_charge_enabled'];
+            }
 
-        $restaurant->update(['settings' => $settings]);
+            $restaurant->update(['settings' => $settings]);
+        });
 
         LogService::log(
             $request,
