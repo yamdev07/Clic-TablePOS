@@ -120,7 +120,7 @@ class Order extends Model
     /** Description d'une commande pour l'écran de la cuisine (API et temps réel). Aucun montant. */
     public function toKitchenArray(): array
     {
-        $this->loadMissing(['items', 'table']);
+        $this->loadMissing(['items.menuItem', 'items.options', 'table']);
 
         // Dans le modèle, $this->table serait le nom de la table SQL : on lit la relation chargée
         $table = $this->getRelation('table');
@@ -139,6 +139,9 @@ class Order extends Model
             'type' => $this->type,
             'table' => $table ? ['number' => $table->number] : null,
             'kitchen_stage' => $this->kitchenStage(),
+            'estimated_prep_time' => (int) $items
+                ->filter(fn ($item) => $item->out_of_stock_at === null)
+                ->sum(fn ($item) => $item->menuItem?->preparation_time ?? 0),
             'items' => $items->map(fn ($item) => [
                 'id' => $item->id,
                 'item_name' => $item->item_name,
@@ -148,6 +151,7 @@ class Order extends Model
                 'special_instructions' => $item->special_instructions,
                 'started_at' => $item->started_at?->toISOString(),
                 'ready_at' => $item->ready_at?->toISOString(),
+                'preparation_time' => $item->menuItem?->preparation_time,
                 'options' => $item->options->map(fn ($opt) => [
                     'name' => $opt->name,
                     'price_delta' => $opt->price_delta,

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -112,8 +111,9 @@ class KitchenEstimatedPrepTimeTest extends TestCase
         $data = $order->toKitchenArray();
 
         $this->assertCount(2, $data['items']);
-        $this->assertSame(25, $data['items'][0]['preparation_time']);
-        $this->assertSame(5, $data['items'][1]['preparation_time']);
+        $prep = collect($data['items'])->pluck('preparation_time', 'item_name');
+        $this->assertSame(25, $prep['Yassa']);
+        $this->assertSame(5, $prep['Bissap']);
     }
 
     // ------------------------------------------------------------------

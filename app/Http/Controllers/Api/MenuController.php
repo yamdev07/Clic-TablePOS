@@ -90,6 +90,7 @@ class MenuController extends Controller
         $request->validate([
             'name' => 'required|string',
             'price' => 'required|integer|min:0',
+            'preparation_time' => 'nullable|integer|min:1|max:240',
             'category_id' => [
                 'nullable',
                 Rule::exists('categories', 'id')
@@ -103,6 +104,7 @@ class MenuController extends Controller
             'category_id' => $request->category_id,
             'name' => $request->name,
             'price' => $request->price,
+            'preparation_time' => $request->preparation_time ?? 15,
             'is_available' => true,
             'is_active' => true,
         ]);
@@ -125,6 +127,7 @@ class MenuController extends Controller
                 Rule::exists('categories', 'id')
                     ->where('restaurant_id', $request->user()->restaurant_id),
             ],
+            'preparation_time' => 'sometimes|integer|min:1|max:240',
             'options' => 'nullable|array',
             'options.*.type' => 'required|in:required_single,optional_single,optional_multi',
             'options.*.name' => 'required|string|max:100',
