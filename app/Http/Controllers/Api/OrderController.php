@@ -16,6 +16,7 @@ use App\Models\Table;
 use App\Services\LogService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -134,6 +135,7 @@ class OrderController extends Controller
             LogService::log($request, 'order.created',
                 "Commande #{$order->order_number} créée".($table ? " — Table {$table->number}" : ' — À emporter'),
                 'order', $order->id);
+            $this->invalidateStatsCache($request);
 
             return response()->json(['success' => true, 'data' => $order->load('items')], 201);
         } catch (ValidationException $e) {
@@ -357,6 +359,7 @@ class OrderController extends Controller
             LogService::log($request, 'order.sent_to_kitchen',
                 "Commande #{$order->order_number} envoyée en cuisine",
                 'order', $order->id);
+            $this->invalidateStatsCache($request);
 
             return response()->json(['success' => true, 'message' => 'Commande envoyée en cuisine']);
 
@@ -452,6 +455,7 @@ class OrderController extends Controller
                 "Commande #{$order->order_number} : {$oldStatus} → {$request->status}",
                 'order', $order->id,
                 ['status' => $oldStatus], ['status' => $request->status]);
+            $this->invalidateStatsCache($request);
 
             return response()->json(['success' => true, 'data' => $order]);
 
@@ -520,6 +524,7 @@ class OrderController extends Controller
             "Commande #{$order->order_number} annulée",
             'order', $order->id,
             ['status' => $oldStatus], ['status' => 'cancelled']);
+        $this->invalidateStatsCache($request);
 
         return response()->json(['success' => true, 'message' => 'Commande annulée', 'data' => $order]);
     }
@@ -543,5 +548,11 @@ class OrderController extends Controller
         } catch (\Throwable) {
             // Reverb indisponible — le polling frontend compensera
         }
+    }
+
+    /** Invalide le cache du dashboard rapide (stats sidebar). */
+    private function invalidateStatsCache(Request $request): void
+    {
+        Cache::forget("stats_{$request->user()->restaurant_id}");
     }
 }

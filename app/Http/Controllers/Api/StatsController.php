@@ -32,7 +32,7 @@ class StatsController extends Controller
                 ->first();
 
             $activeOrders = Order::where('restaurant_id', $restaurantId)
-                ->whereNotIn('status', ['paid', 'cancelled'])
+                ->whereIn('status', Order::ACTIVE_STATUSES)
                 ->count();
 
             // todayOrders : nombre de commandes créées aujourd'hui (date métier = created_at)
