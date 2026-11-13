@@ -19,9 +19,13 @@ class StatsController extends Controller
     public function index(Request $request)
     {
         $restaurantId = $request->user()->restaurant_id;
+        $tz = 'Africa/Porto-Novo';
 
-        $stats = Cache::remember("stats_{$restaurantId}", 15, function () use ($restaurantId) {
-            $today = now()->toDateString();
+        $stats = Cache::remember("stats_{$restaurantId}", 15, function () use ($restaurantId, $tz) {
+            $localNow = Carbon::now($tz);
+            $todayLocal = $localNow->toDateString();
+            $fromUtc = $localNow->copy()->startOfDay()->utc();
+            $toUtc = $localNow->copy()->endOfDay()->utc();
 
             $tables = Table::where('restaurant_id', $restaurantId)
                 ->selectRaw('COUNT(*) as total, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as occupied', ['occupied'])
@@ -31,17 +35,23 @@ class StatsController extends Controller
                 ->whereNotIn('status', ['paid', 'cancelled'])
                 ->count();
 
-            $todayStats = Order::where('restaurant_id', $restaurantId)
-                ->whereDate('created_at', $today)
-                ->selectRaw('COUNT(*) as today_orders, COALESCE(SUM(CASE WHEN status = ? THEN total ELSE 0 END), 0) as today_revenue', ['paid'])
-                ->first();
+            // todayOrders : nombre de commandes créées aujourd'hui (date métier = created_at)
+            $todayOrders = Order::where('restaurant_id', $restaurantId)
+                ->whereBetween('created_at', [$fromUtc, $toUtc])
+                ->count();
+
+            // todayRevenue : CA réalisé aujourd'hui (completed_at, cohérent avec Z et CashSummary)
+            $todayRevenue = (int) Order::where('restaurant_id', $restaurantId)
+                ->where('status', 'paid')
+                ->whereBetween('completed_at', [$fromUtc, $toUtc])
+                ->sum('total');
 
             return [
                 'tables' => (int) $tables->total,
                 'occupiedTables' => (int) $tables->occupied,
                 'activeOrders' => $activeOrders,
-                'todayOrders' => (int) $todayStats->today_orders,
-                'todayRevenue' => (int) $todayStats->today_revenue,
+                'todayOrders' => $todayOrders,
+                'todayRevenue' => $todayRevenue,
             ];
         });
 

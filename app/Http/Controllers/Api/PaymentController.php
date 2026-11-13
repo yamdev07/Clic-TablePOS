@@ -10,6 +10,7 @@ use App\Models\PaymentNumber;
 use App\Services\LogService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -148,6 +149,7 @@ class PaymentController extends Controller
             "Paiement de {$payment->amount} FCFA ({$label}) — commande #{$order->order_number}",
             'payment', $payment->id,
             [], ['amount' => $payment->amount, 'method' => $payment->method, 'operator' => $payment->operator]);
+        Cache::forget("stats_{$restaurantId}");
 
         return response()->json($payment, 201);
     }

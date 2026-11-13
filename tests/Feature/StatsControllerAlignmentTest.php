@@ -63,7 +63,6 @@ class StatsControllerAlignmentTest extends TestCase
             'type' => 'dine_in',
             'user_id' => User::factory()->create(['restaurant_id' => $this->restaurant->id])->id,
             'status' => $status,
-            'total' => 5000,
         ]);
 
         OrderItem::create([
@@ -77,6 +76,9 @@ class StatsControllerAlignmentTest extends TestCase
             'options_total' => 0,
             'kitchen_status' => 'served',
         ]);
+
+        // Recalculer les totaux (subtotal, tax, service, total, due_amount)
+        $order->recalculate();
 
         if ($createdAt) {
             $order->created_at = $createdAt;
@@ -110,9 +112,8 @@ class StatsControllerAlignmentTest extends TestCase
 
         // todayRevenue doit compter la commande payée aujourd'hui (5000)
         // et NON la commande créée aujourd'hui mais non payée
-        $this->assertSame(5000, $data['todayRevenue']);
+        $this->assertSame(6150, $data['todayRevenue']);
     }
-
     // ------------------------------------------------------------------
     // 2. todayOrders reste sur created_at
     // ------------------------------------------------------------------
@@ -160,6 +161,6 @@ class StatsControllerAlignmentTest extends TestCase
         // 3. Recharger les stats → doit refléter le paiement
         $this->actingAsRole('admin');
         $data2 = $this->getJson('/api/stats')->assertOk()->json();
-        $this->assertSame(5000, $data2['todayRevenue']);
+        $this->assertSame(6150, $data2['todayRevenue']);
     }
 }
