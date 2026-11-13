@@ -16,13 +16,14 @@ class CashSession extends Model
 
     protected $fillable = [
         'id', 'cash_register_id', 'status', 'opening_balance', 'opened_by', 'opened_at',
-        'expected_balance', 'closing_balance', 'difference', 'closed_by', 'closed_at',
+        'expected_balance', 'closing_balance', 'difference', 'report_snapshot', 'closed_by', 'closed_at',
     ];
 
     protected $casts = [
         'opening_balance' => 'integer',
         'expected_balance' => 'integer',
         'closing_balance' => 'integer',
+        'report_snapshot' => 'array',
         'difference' => 'integer',
         'opened_at' => 'datetime',
         'closed_at' => 'datetime',

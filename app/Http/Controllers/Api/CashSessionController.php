@@ -106,6 +106,11 @@ class CashSessionController extends Controller
                 'closed_at' => now(),
             ]);
 
+            // Générer et figer le snapshot du rapport
+            $locked->update([
+                'report_snapshot' => $this->buildReport($locked),
+            ]);
+
             return $locked;
         });
 
@@ -192,5 +197,82 @@ class CashSessionController extends Controller
             ->get();
 
         return response()->json(['data' => $movements]);
+    }
+
+    public function report(Request $request, CashSession $session)
+    {
+        $this->ensureBelongsToRestaurant($request, $session);
+
+        abort_unless(
+            in_array($request->user()->role, self::READ_ROLES, true),
+            403,
+            "Vous n'êtes pas autorisé à consulter le rapport de caisse."
+        );
+
+        // Si la session est fermée et que le snapshot existe → renvoyer tel quel
+        if ($session->status === 'closed' && $session->report_snapshot !== null) {
+            return response()->json($session->report_snapshot);
+        }
+
+        // Sinon, calculer à la volée (session ouverte ou snapshot manquant)
+        return response()->json($this->buildReport($session));
+    }
+
+    /**
+     * Construit le rapport de caisse complet (figé à la fermeture).
+     */
+    private function buildReport(CashSession $session): array
+    {
+        $session->loadMissing(['cashRegister', 'opener:id,name', 'closer:id,name', 'movements.creator:id,name']);
+
+        $cashCollected = (int) $session->payments()
+            ->where('method', 'cash')
+            ->where('status', 'completed')
+            ->sum('amount');
+
+        $paymentsCount = $session->payments()
+            ->where('method', 'cash')
+            ->where('status', 'completed')
+            ->count();
+
+        $movementsIn = (int) $session->movements()->where('type', 'in')->sum('amount');
+        $movementsOut = (int) $session->movements()->where('type', 'out')->sum('amount');
+
+        $expected = $session->opening_balance + $cashCollected + $movementsIn - $movementsOut;
+
+        return [
+            'session_id' => $session->id,
+            'status' => $session->status,
+            'cash_register' => $session->cashRegister ? [
+                'id' => $session->cashRegister->id,
+                'name' => $session->cashRegister->name,
+            ] : null,
+            'opened_at' => $session->opened_at?->toIso8601String(),
+            'closed_at' => $session->closed_at?->toIso8601String(),
+            'opened_by' => $session->opener ? [
+                'id' => $session->opener->id,
+                'name' => $session->opener->name,
+            ] : null,
+            'closed_by' => $session->closer ? [
+                'id' => $session->closer->id,
+                'name' => $session->closer->name,
+            ] : null,
+            'opening_balance' => (int) $session->opening_balance,
+            'cash_collected' => $cashCollected,
+            'movements_in' => $movementsIn,
+            'movements_out' => $movementsOut,
+            'expected_balance' => $expected,
+            'closing_balance' => $session->closing_balance !== null ? (int) $session->closing_balance : null,
+            'difference' => $session->difference !== null ? (int) $session->difference : null,
+            'payments_count' => $paymentsCount,
+            'movements' => $session->movements->map(fn ($m) => [
+                'id' => $m->id,
+                'type' => $m->type,
+                'amount' => (int) $m->amount,
+                'reason' => $m->reason,
+                'at' => $m->created_at?->toIso8601String(),
+                'by' => $m->creator?->name,
+            ])->values()->all(),
+        ];
     }
 }

@@ -97,6 +97,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cash/sessions/{session}/movements', [CashSessionController::class, 'addMovement']);
     Route::get('/cash/sessions/{session}/movements', [CashSessionController::class, 'listMovements']);
     Route::get('/cash/sessions/{session}', [CashSessionController::class, 'show']);
+    Route::get('/cash/sessions/{session}/report', [CashSessionController::class, 'report']);
     // Caisse
     Route::get('/cash/summary', [CashController::class, 'summary']);
     Route::get('/payments', [PaymentsHistoryController::class, 'index']);
