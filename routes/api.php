@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CashController;
+use App\Http\Controllers\Api\CashSessionController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CollectionRequestController;
 use App\Http\Controllers\Api\DashboardController;
@@ -90,6 +91,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payments
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store']);
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index']);
+    // Caisse — sessions
+    Route::post('/cash/sessions/open', [CashSessionController::class, 'open']);
+    Route::post('/cash/sessions/{session}/close', [CashSessionController::class, 'close']);
+    Route::get('/cash/sessions/{session}', [CashSessionController::class, 'show']);
     // Caisse
     Route::get('/cash/summary', [CashController::class, 'summary']);
     Route::get('/payments', [PaymentsHistoryController::class, 'index']);

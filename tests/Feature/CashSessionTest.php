@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\CashRegister;
 use App\Models\CashSession;
+use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Restaurant;
+use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -129,21 +132,38 @@ class CashSessionTest extends TestCase
             'opening_balance' => 50000,
         ])->assertCreated()->json('id');
 
-        // Simuler 150 000 en paiements cash (via injection directe)
-        \DB::table('payments')->insert([
+        // Créer une vraie commande pour le paiement
+        $table = Table::create([
             'id' => (string) Str::uuid(),
-            'order_id' => null, // pas de lien requis pour ce test
-            'user_id' => \App\Models\User::factory()->create(['restaurant_id' => $this->restaurant->id])->id,
+            'restaurant_id' => $this->restaurant->id,
+            'number' => '1',
+            'capacity' => 4,
+            'status' => 'occupied',
+            'qr_code' => 'https://example.com/'.Str::random(8),
+        ]);
+
+        $order = Order::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->restaurant->id,
+            'table_id' => $table->id,
+            'type' => 'dine_in',
+            'user_id' => User::factory()->create(['restaurant_id' => $this->restaurant->id])->id,
+            'status' => 'paid',
+        ]);
+
+        // Simuler 150 000 en paiement cash lié à la session
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'order_id' => $order->id,
+            'user_id' => User::factory()->create(['restaurant_id' => $this->restaurant->id])->id,
             'payment_group_id' => null,
+            'cash_session_id' => $id,
             'amount' => 150000,
             'method' => 'cash',
             'operator' => null,
             'reference' => null,
-            'transaction_data' => json_encode([]),
+            'transaction_data' => ['receipt_confirmed_at' => now()->toIso8601String()],
             'status' => 'completed',
-            'cash_session_id' => $id,
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
 
         // Fermer avec comptage physique : 198 500 (théorique 200 000 → écart -1500)
