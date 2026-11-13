@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Services\LogService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -160,5 +161,87 @@ class ReceiptController extends Controller
             'payments' => $payments,
             'cashier' => $cashier ? ['name' => $cashier->name] : null,
         ];
+    }
+
+    public function pdf(Request $request, Order $order)
+    {
+        abort_unless(
+            in_array($request->user()->role, self::READ_ROLES, true),
+            403,
+            "Vous n'êtes pas autorisé à télécharger une facture."
+        );
+
+        abort_unless(
+            (string) $order->restaurant_id === (string) $request->user()->restaurant_id,
+            404
+        );
+
+        $preview = (bool) $request->query('preview', false);
+
+        if (! $preview && $order->status !== 'paid') {
+            return response()->json([
+                'message' => 'La facture PDF est disponible uniquement pour une commande payée. Utilisez ?preview=1 pour un aperçu.',
+            ], 422);
+        }
+
+        // Récupérer (ou créer) le snapshot — même logique que show()
+        if ($preview) {
+            $receiptData = $this->buildReceipt($order, null, true);
+        } else {
+            $existing = Invoice::where('order_id', $order->id)->first();
+            if ($existing) {
+                $receiptData = $existing->snapshot;
+            } else {
+                // Créer la facture (comme show())
+                $invoice = DB::transaction(function () use ($order) {
+                    $locked = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+                    $existing = Invoice::where('order_id', $locked->id)->first();
+                    if ($existing) {
+                        return $existing;
+                    }
+                    $now = Carbon::now(self::TZ);
+                    $date = $now->toDateString();
+                    $dateCode = $now->format('Ymd');
+                    $sequence = (Invoice::where('restaurant_id', $locked->restaurant_id)
+                        ->where('date', $date)
+                        ->lockForUpdate()
+                        ->max('sequence_number') ?? 0) + 1;
+                    $receiptNumber = 'FA-'.$dateCode.'-'.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+                    $snapshot = $this->buildReceipt($locked, $receiptNumber, false);
+
+                    return Invoice::create([
+                        'id' => (string) Str::uuid(),
+                        'restaurant_id' => $locked->restaurant_id,
+                        'order_id' => $locked->id,
+                        'receipt_number' => $receiptNumber,
+                        'date' => $date,
+                        'sequence_number' => $sequence,
+                        'snapshot' => $snapshot,
+                        'issued_at' => now(),
+                    ]);
+                });
+                $receiptData = $invoice->snapshot;
+            }
+        }
+
+        // Choisir la vue et le format
+        $format = $request->query('format', 'a4');
+        $view = $format === 'ticket' ? 'receipts.ticket' : 'receipts.a4';
+        $download = (bool) $request->query('download', false);
+
+        $pdf = Pdf::loadView($view, ['receipt' => $receiptData]);
+
+        if ($format === 'ticket') {
+            // Format ticket 80mm — hauteur dynamique (DomPDF limite les formats personnalisés)
+            $pdf->setPaper([0, 0, 226.77, 1200], 'portrait'); // 80mm = 226.77pt
+        } else {
+            $pdf->setPaper('A4', 'portrait');
+        }
+
+        $filename = 'facture-'.($receiptData['receipt_number'] ?? 'preview').'.pdf';
+
+        return $download
+            ? $pdf->download($filename)
+            : $pdf->stream($filename);
     }
 }

@@ -78,6 +78,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
     // Facture
     Route::get('/orders/{order}/receipt', [ReceiptController::class, 'show']);
+    Route::get('/orders/{order}/receipt.pdf', [ReceiptController::class, 'pdf']);
 
     // Kitchen
     Route::get('/kitchen/pending', [KitchenController::class, 'pendingOrders']);
