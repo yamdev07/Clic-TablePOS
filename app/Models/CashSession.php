@@ -63,4 +63,26 @@ class CashSession extends Model
     {
         return $this->status === 'open';
     }
+
+    public function movements()
+    {
+        return $this->hasMany(CashMovement::class);
+    }
+
+    /**
+     * Calcule le solde théorique d'une session.
+     * = opening_balance + paiements cash completed + mouvements in - mouvements out.
+     */
+    public function expectedBalance(): int
+    {
+        $cashCollected = $this->payments()
+            ->where('method', 'cash')
+            ->where('status', 'completed')
+            ->sum('amount');
+
+        $in = $this->movements()->where('type', 'in')->sum('amount');
+        $out = $this->movements()->where('type', 'out')->sum('amount');
+
+        return (int) ($this->opening_balance + $cashCollected + $in - $out);
+    }
 }

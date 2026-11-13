@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CashMovement;
 use App\Models\CashRegister;
 use App\Models\CashSession;
-use App\Models\Payment;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -94,13 +94,7 @@ class CashSessionController extends Controller
         $closed = DB::transaction(function () use ($session, $validated, $request) {
             $locked = CashSession::whereKey($session->id)->lockForUpdate()->first();
 
-            // Total des paiements cash liés à cette session
-            $cashCollected = Payment::where('cash_session_id', $locked->id)
-                ->where('method', 'cash')
-                ->where('status', 'completed')
-                ->sum('amount');
-
-            $expected = $locked->opening_balance + $cashCollected;
+            $expected = $locked->expectedBalance();
             $difference = $validated['closing_balance'] - $expected;
 
             $locked->update([
@@ -132,5 +126,71 @@ class CashSessionController extends Controller
         );
 
         return response()->json($session->load(['cashRegister', 'opener', 'closer']));
+    }
+
+    public function addMovement(Request $request, CashSession $session)
+    {
+        $this->ensureBelongsToRestaurant($request, $session);
+
+        abort_unless(
+            in_array($request->user()->role, self::WRITE_ROLES, true),
+            403,
+            "Seuls le caissier, le gérant et l'administrateur peuvent ajouter un mouvement."
+        );
+
+        if ($session->status !== 'open') {
+            return response()->json([
+                'message' => 'Cette session est fermée : aucun mouvement possible.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'type' => 'required|in:in,out',
+            'amount' => 'required|integer|min:1',
+            'reason' => 'required|string|max:255',
+        ]);
+
+        // Pour un retrait, vérifier qu'il ne dépasse pas le solde théorique
+        if ($validated['type'] === 'out') {
+            $expected = $session->expectedBalance();
+            if ($validated['amount'] > $expected) {
+                return response()->json([
+                    'message' => "Retrait impossible : montant supérieur au solde théorique ({$expected} FCFA).",
+                    'expected_balance' => $expected,
+                ], 422);
+            }
+        }
+
+        $movement = CashMovement::create([
+            'id' => (string) Str::uuid(),
+            'cash_session_id' => $session->id,
+            'type' => $validated['type'],
+            'amount' => $validated['amount'],
+            'reason' => $validated['reason'],
+            'created_by' => $request->user()->id,
+        ]);
+
+        LogService::log($request, 'cash_session.movement',
+            "Mouvement {$validated['type']} de {$validated['amount']} FCFA — {$validated['reason']}",
+            'cash_session', $session->id);
+
+        return response()->json($movement, 201);
+    }
+
+    public function listMovements(Request $request, CashSession $session)
+    {
+        $this->ensureBelongsToRestaurant($request, $session);
+
+        abort_unless(
+            in_array($request->user()->role, self::READ_ROLES, true),
+            403
+        );
+
+        $movements = $session->movements()
+            ->with('creator:id,name')
+            ->orderBy('created_at')
+            ->get();
+
+        return response()->json(['data' => $movements]);
     }
 }
