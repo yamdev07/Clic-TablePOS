@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CashSession;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentNumber;
@@ -104,6 +105,21 @@ class PaymentController extends Controller
                     ]);
                 }
             }
+            // Lien automatique avec la session de caisse ouverte (si cash)
+            $cashSessionId = null;
+            if ($validated['method'] === 'cash') {
+                $openSession = CashSession::whereHas('cashRegister', function ($q) use ($restaurantId) {
+                    $q->where('restaurant_id', $restaurantId);
+                })
+                    ->where('status', 'open')
+                    ->first();
+
+                if (! $openSession && config('cash.require_open_session')) {
+                    $this->refuse("Aucune session de caisse ouverte. Ouvrez la caisse avant d'encaisser en espèces.");
+                }
+
+                $cashSessionId = $openSession?->id;
+            }
 
             $payment = Payment::create([
                 'id' => (string) Str::uuid(),
@@ -113,8 +129,10 @@ class PaymentController extends Controller
                 'method' => $validated['method'],
                 'operator' => $isMobileMoney ? $validated['operator'] : null,
                 'reference' => $validated['reference'] ?? null,
+                'cash_session_id' => $cashSessionId,
                 'transaction_data' => ['receipt_confirmed_at' => now()->toIso8601String()],
                 'status' => 'completed',
+
             ]);
 
             $locked->recalculate();
