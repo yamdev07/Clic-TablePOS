@@ -89,7 +89,10 @@ http://192.168.1.20:5173
 
 ## 5. Déroulement d'un service (formation)
 
-Chaque employé a **son propre compte** (créé par l'administrateur dans *Utilisateurs*).
+Avant le premier service, l'administrateur :
+
+1. renseigne **Mon restaurant** (nom, adresse, téléphone) : ce sont les informations imprimées sur les factures ;
+2. crée **un compte par employé** dans *Utilisateurs* (Serveur, Cuisinier, Caissier, Gérant).
 
 | Étape | Qui | Écran | Ce qui se passe |
 |---|---|---|---|
