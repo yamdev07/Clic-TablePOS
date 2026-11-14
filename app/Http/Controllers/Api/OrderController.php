@@ -11,6 +11,7 @@ use App\Models\Table;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
 {
@@ -30,17 +31,20 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        return response()->json($order->load(['table', 'items.menuItem', 'payments']));
+        return response()->json($order->load(['table', 'user:id,name', 'items.menuItem', 'payments']));
     }
 
     public function store(Request $request)
     {
         try {
             $request->validate([
-                'table_id' => 'required|exists:tables,id',
+                'table_id' => [
+                    'required',
+                    Rule::exists('tables', 'id')->where('restaurant_id', $request->user()->restaurant_id),
+                ],
             ]);
 
-            $table = Table::findOrFail($request->table_id);
+            $table = Table::forCurrentRestaurant()->findOrFail($request->table_id);
 
             if ($table->status !== 'free') {
                 return response()->json([
@@ -77,12 +81,15 @@ class OrderController extends Controller
     {
         try {
             $request->validate([
-                'menu_item_id'          => 'required|exists:menu_items,id',
+                'menu_item_id'          => [
+                    'required',
+                    Rule::exists('menu_items', 'id')->where('restaurant_id', $request->user()->restaurant_id),
+                ],
                 'quantity'              => 'integer|min:1',
                 'special_instructions'  => 'nullable|string|max:500',
             ]);
 
-            $menuItem  = MenuItem::findOrFail($request->menu_item_id);
+            $menuItem  = MenuItem::forCurrentRestaurant()->findOrFail($request->menu_item_id);
             $quantity  = $request->quantity ?? 1;
 
             $orderItem = $order->items()->create([
@@ -97,6 +104,7 @@ class OrderController extends Controller
             ]);
 
             $order->recalculate();
+            $order->syncStatusFromItems();
 
             LogService::log($request, 'order.item_added',
                 "Ajout x{$quantity} {$menuItem->name} → commande #{$order->order_number}",
@@ -119,6 +127,7 @@ class OrderController extends Controller
 
             $order->items()->where('id', $itemId)->delete();
             $order->recalculate();
+            $order->syncStatusFromItems();
 
             LogService::log($request, 'order.item_removed',
                 "Suppression de \"{$itemName}\" — commande #{$order->order_number}",
@@ -134,11 +143,8 @@ class OrderController extends Controller
     public function confirm(Order $order, Request $request)
     {
         try {
-            $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
-
-            foreach ($order->items as $item) {
-                $item->update(['kitchen_status' => 'pending']);
-            }
+            // Même règle que l'envoi en cuisine : la commande reste ouverte
+            $order->update(['confirmed_at' => now()]);
 
             LogService::log($request, 'order.confirmed',
                 "Commande #{$order->order_number} confirmée",
@@ -171,10 +177,18 @@ class OrderController extends Controller
         }
     }
 
+    /**
+     * Envoi en cuisine : la commande reste « Ouverte » (visible par le cuisinier)
+     * et passe « En préparation » quand il lance le premier plat.
+     */
     public function sendToKitchen(Order $order, Request $request)
     {
         try {
-            $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
+            if ($order->status !== 'open') {
+                return response()->json(['success' => false, 'message' => 'Cette commande a déjà été envoyée en cuisine'], 422);
+            }
+
+            $order->update(['confirmed_at' => now()]);
 
             $this->tryBroadcast(fn () => broadcast(new NewOrderReceived($order))->toOthers());
 

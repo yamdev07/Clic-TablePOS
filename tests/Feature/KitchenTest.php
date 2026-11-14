@@ -120,11 +120,8 @@ class KitchenTest extends TestCase
             'is_available' => false,
         ]);
 
-        // L'item de commande doit être retiré de la queue
-        $this->assertDatabaseHas('order_items', [
-            'id'             => $this->item->id,
-            'kitchen_status' => 'served',
-        ]);
+        // Le plat est retiré de la commande (il ne sera pas facturé)
+        $this->assertDatabaseMissing('order_items', ['id' => $this->item->id]);
     }
 
     /** @test */

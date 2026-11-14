@@ -33,6 +33,19 @@ class OrderItem extends Model
         });
     }
 
+    /** Isolation multi-tenant via la commande parente (pas de restaurant_id ici). */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $query = $this->where($field ?? $this->getRouteKeyName(), $value);
+
+        if (auth()->check()) {
+            $restaurantId = auth()->user()->restaurant_id;
+            $query->whereHas('order', fn ($q) => $q->where('restaurant_id', $restaurantId));
+        }
+
+        return $query->firstOrFail();
+    }
+
     public function order()
     {
         return $this->belongsTo(Order::class);

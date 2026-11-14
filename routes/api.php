@@ -8,20 +8,34 @@ use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PlatformController;
+use App\Http\Controllers\Api\RestaurantController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Routes publiques
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 
 // Routes protégées par token
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
+Route::middleware(['auth:sanctum', 'active'])->get('/me', [AuthController::class, 'me']);
 
-    // Auth
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/me', [AuthController::class, 'me']);
+// Administration de la plateforme SaaS
+Route::middleware(['auth:sanctum', 'active', 'super_admin'])->prefix('platform')->group(function () {
+    Route::get('/stats', [PlatformController::class, 'stats']);
+    Route::get('/restaurants', [PlatformController::class, 'index']);
+    Route::get('/restaurants/{restaurant}', [PlatformController::class, 'show']);
+    Route::patch('/restaurants/{restaurant}', [PlatformController::class, 'update']);
+});
+
+// Routes métier d'un restaurant
+Route::middleware(['auth:sanctum', 'active', 'tenant'])->group(function () {
+
+    // Fiche du restaurant (en-tête des factures)
+    Route::get('/restaurant', [RestaurantController::class, 'show']);
+    Route::put('/restaurant', [RestaurantController::class, 'update']);
 
     // Tables
     Route::get('/tables', [TableController::class, 'index']);

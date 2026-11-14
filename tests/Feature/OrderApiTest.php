@@ -126,10 +126,12 @@ class OrderApiTest extends TestCase
 
         $response = $this->postJson("/api/orders/{$order->id}/send-to-kitchen");
 
+        // La commande reste « ouverte » : c'est le cuisinier qui la lance en préparation
         $response->assertStatus(200);
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
-            'status' => 'in_progress',
+            'status' => 'open',
         ]);
+        $this->assertNotNull($order->fresh()->confirmed_at);
     }
 }
