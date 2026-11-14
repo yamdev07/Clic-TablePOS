@@ -5,7 +5,7 @@ namespace App\Events;
 use App\Models\Order;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -14,7 +14,7 @@ use Illuminate\Queue\SerializesModels;
  * Canal : private-kitchen.{restaurant_id}  (cuisine)
  *       + private-restaurant.{restaurant_id} (admin / manager)
  */
-class NewOrderReceived implements ShouldBroadcast
+class NewOrderReceived implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
