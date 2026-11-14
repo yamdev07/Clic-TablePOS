@@ -68,6 +68,44 @@ class Order extends Model
         return $this->hasMany(Payment::class);
     }
 
+    /**
+     * Fait avancer la commande selon l'état de ses plats en cuisine :
+     *   open → in_progress (dès qu'un plat est lancé par le cuisinier)
+     *   → ready (tous les plats prêts ou servis)
+     *   → served (tous les plats servis).
+     * Un plat ajouté à une commande prête/servie la renvoie « en préparation ».
+     * Ne revient jamais à « open » et ne touche pas aux commandes payées / annulées.
+     * Retourne l'ancien statut si la commande a changé, sinon null.
+     */
+    public function syncStatusFromItems(): ?string
+    {
+        if (! in_array($this->status, ['open', 'in_progress', 'ready', 'served'], true)) {
+            return null;
+        }
+
+        $statuses = $this->items()->pluck('kitchen_status');
+        if ($statuses->isEmpty()) {
+            return null;
+        }
+
+        $target = match (true) {
+            $statuses->every(fn ($s) => $s === 'served') => 'served',
+            $statuses->every(fn ($s) => in_array($s, ['ready', 'served'], true)) => 'ready',
+            $statuses->contains(fn ($s) => $s !== 'pending') => 'in_progress',
+            $this->status === 'open' => 'open',
+            default => 'in_progress', // nouveau plat sur une commande prête/servie
+        };
+
+        if ($target === $this->status) {
+            return null;
+        }
+
+        $old = $this->status;
+        $this->update(['status' => $target]);
+
+        return $old;
+    }
+
     public function recalculate(): void
     {
         $subtotal = $this->items()->sum('total_price');
@@ -87,7 +125,8 @@ class Order extends Model
             'due_amount' => $due,
         ]);
 
-        if ($due <= 0 && $this->status !== 'paid') {
+        // Une commande vide (total 0) n'est pas « payée »
+        if ($total > 0 && $due <= 0 && $this->status !== 'paid') {
             $this->update(['status' => 'paid']);
             $table = $this->table()->first();
             if ($table) {
