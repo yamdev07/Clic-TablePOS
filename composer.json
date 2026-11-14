@@ -65,7 +65,7 @@
         ],
         "lan": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#fb7185\" \"php artisan serve --host=0.0.0.0 --port=8000\" \"php artisan reverb:start --host=0.0.0.0 --port=8080\" --names=api,temps-reel"
+            "npx concurrently -c \"#93c5fd,#fb7185\" \"php artisan serve --host=0.0.0.0 --port=8000\" \"php artisan reverb:start --host=0.0.0.0 --port=6001\" --names=api,temps-reel"
         ]
     },
     "extra": {
