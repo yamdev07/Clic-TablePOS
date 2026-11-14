@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PlatformController;
+use App\Http\Controllers\Api\RestaurantController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,10 @@ Route::middleware(['auth:sanctum', 'active', 'super_admin'])->prefix('platform')
 
 // Routes métier d'un restaurant
 Route::middleware(['auth:sanctum', 'active', 'tenant'])->group(function () {
+
+    // Fiche du restaurant (en-tête des factures)
+    Route::get('/restaurant', [RestaurantController::class, 'show']);
+    Route::put('/restaurant', [RestaurantController::class, 'update']);
 
     // Tables
     Route::get('/tables', [TableController::class, 'index']);

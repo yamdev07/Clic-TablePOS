@@ -31,7 +31,7 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        return response()->json($order->load(['table', 'items.menuItem', 'payments']));
+        return response()->json($order->load(['table', 'user:id,name', 'items.menuItem', 'payments']));
     }
 
     public function store(Request $request)
