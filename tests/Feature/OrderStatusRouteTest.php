@@ -98,7 +98,8 @@ class OrderStatusRouteTest extends TestCase
         $this->patchJson("/api/orders/{$order->id}/status", ['status' => 'in_progress'])->assertOk();
 
         $fresh = $order->fresh();
-        $this->assertSame('in_progress', $fresh->status);
+        $this->assertSame('open', $fresh->status);
+        $this->assertNotNull($fresh->confirmed_at);
         $this->assertNotNull($fresh->confirmed_at);
         $this->assertSame('occupied', $this->table->fresh()->status);
         $this->assertSame($order->id, $this->table->fresh()->current_order_id);

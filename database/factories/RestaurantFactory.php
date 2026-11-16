@@ -20,6 +20,7 @@ class RestaurantFactory extends Factory
             'slug' => fake()->slug(),
             'email' => fake()->unique()->companyEmail(),
             'status' => 'active',
+            'trial_ends_at' => now()->addDays(30),
             'settings' => json_encode([
                 'auto_assign_orders' => true,
                 'kitchen_print_auto' => true,

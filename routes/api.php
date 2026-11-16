@@ -14,7 +14,9 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentNumberController;
 use App\Http\Controllers\Api\PaymentsHistoryController;
+use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\ReceiptController;
+use App\Http\Controllers\Api\RestaurantController;
 use App\Http\Controllers\Api\RestaurantSettingsController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SupplementController;
@@ -23,18 +25,32 @@ use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Routes publiques
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 
-// Routes protégées par token
-Route::middleware('auth:sanctum')->group(function () {
+// Routes protégées par token (sans middleware active/tenant)
+Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
+Route::middleware(['auth:sanctum', 'active'])->get('/me', [AuthController::class, 'me']);
 
-    // Auth
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/me', [AuthController::class, 'me']);
+// Administration de la plateforme SaaS (super_admin uniquement)
+Route::middleware(['auth:sanctum', 'active', 'super_admin'])->prefix('platform')->group(function () {
+    Route::get('/stats', [PlatformController::class, 'stats']);
+    Route::get('/restaurants', [PlatformController::class, 'index']);
+    Route::get('/restaurants/{restaurant}', [PlatformController::class, 'show']);
+    Route::patch('/restaurants/{restaurant}', [PlatformController::class, 'update']);
+});
+
+// Routes métier d'un restaurant (tenant uniquement)
+Route::middleware(['auth:sanctum', 'active', 'tenant'])->group(function () {
+
+    // Fiche du restaurant
+    Route::get('/restaurant', [RestaurantController::class, 'show']);
+    Route::put('/restaurant', [RestaurantController::class, 'update']);
+
     // Paramètres fiscaux du restaurant
     Route::get('/restaurant/settings', [RestaurantSettingsController::class, 'show']);
     Route::patch('/restaurant/settings', [RestaurantSettingsController::class, 'update']);
+
     // Dashboard (admin et gérant)
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
@@ -63,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::match(['put', 'patch'], '/menu/{item}', [MenuController::class, 'update']);
     Route::delete('/menu/{item}', [MenuController::class, 'destroy']);
     Route::patch('/menu/{item}/availability', [MenuController::class, 'toggleAvailability']);
+
     // Suppléments partagés
     Route::get('/supplements', [SupplementController::class, 'index']);
     Route::post('/supplements', [SupplementController::class, 'store']);
@@ -92,11 +109,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payments
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store']);
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index']);
+
     // Caisses (CRUD)
     Route::get('/cash/registers', [CashRegisterController::class, 'index']);
     Route::post('/cash/registers', [CashRegisterController::class, 'store']);
     Route::patch('/cash/registers/{register}', [CashRegisterController::class, 'update']);
     Route::delete('/cash/registers/{register}', [CashRegisterController::class, 'destroy']);
+
     // Caisse — sessions
     Route::post('/cash/sessions/open', [CashSessionController::class, 'open']);
     Route::post('/cash/sessions/{session}/close', [CashSessionController::class, 'close']);
@@ -104,14 +123,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/cash/sessions/{session}/movements', [CashSessionController::class, 'listMovements']);
     Route::get('/cash/sessions/{session}', [CashSessionController::class, 'show']);
     Route::get('/cash/sessions/{session}/report', [CashSessionController::class, 'report']);
-    // Caisse
+
+    // Caisse — résumé et historique
     Route::get('/cash/summary', [CashController::class, 'summary']);
     Route::get('/payments', [PaymentsHistoryController::class, 'index']);
+
     // Numéros Mobile Money du restaurant
     Route::get('/payment-numbers', [PaymentNumberController::class, 'index']);
     Route::post('/payment-numbers', [PaymentNumberController::class, 'store']);
     Route::patch('/payment-numbers/{paymentNumber}', [PaymentNumberController::class, 'update']);
     Route::delete('/payment-numbers/{paymentNumber}', [PaymentNumberController::class, 'destroy']);
+
     // Demandes d'encaissement
     Route::get('/collection-requests', [CollectionRequestController::class, 'index']);
     Route::get('/collection-requests/{collectionRequest}', [CollectionRequestController::class, 'show']);
@@ -119,16 +141,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/collection-requests/{collectionRequest}/validate', [CollectionRequestController::class, 'validateCollection']);
     Route::delete('/collection-requests/{collectionRequest}', [CollectionRequestController::class, 'cancel']);
 
-    // Stats sidebar (1 appel au lieu de 2)
+    // Stats sidebar
     Route::get('/stats', [StatsController::class, 'index']);
     Route::get('/stats/z-report/closed', [StatsController::class, 'closedList']);
     Route::get('/stats/z-report/closed/{id}', [StatsController::class, 'closedShow']);
-
     Route::get('/stats/z-report', [StatsController::class, 'zReport']);
     Route::post('/stats/z-report/close', [StatsController::class, 'close']);
-
-    // Tableau de bord (admin et gérant)
-    Route::get('/dashboard', [DashboardController::class, 'index']);
 
     // Logs (admin only)
     Route::get('/logs', [LogController::class, 'index']);

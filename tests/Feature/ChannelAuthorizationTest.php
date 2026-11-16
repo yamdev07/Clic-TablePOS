@@ -4,13 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Restaurant;
 use App\Models\User;
+use Illuminate\Contracts\Broadcasting\Factory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Qui peut s'abonner à quel canal temps réel ?
- */
 class ChannelAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
@@ -23,7 +21,6 @@ class ChannelAuthorizationTest extends TestCase
     {
         parent::setUp();
 
-        // Un vrai pilote de diffusion est nécessaire pour que les canaux soient évalués
         config([
             'broadcasting.default' => 'reverb',
             'broadcasting.connections.reverb' => [
@@ -35,11 +32,14 @@ class ChannelAuthorizationTest extends TestCase
             ],
         ]);
 
+        app()->forgetInstance('broadcast');
+        app()->forgetInstance(Factory::class);
+        require base_path('routes/channels.php');
+
         $this->restaurantA = Restaurant::factory()->create();
         $this->restaurantB = Restaurant::factory()->create();
     }
 
-    /** Un utilisateur du restaurant A demande à rejoindre un canal (du restaurant A ou B). */
     private function channelStatus(string $role, string $channel, bool $ownRestaurant = true): int
     {
         $user = User::factory()->create([

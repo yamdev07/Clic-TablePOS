@@ -27,13 +27,10 @@ class OrderController extends Controller
 
     private const STATUS_ROLES = ['admin', 'manager', 'waiter'];
 
-    private function ensureOrderBelongsToRestaurant(
-        Request $request,
-        Order $order
-    ): void {
+    private function ensureOrderBelongsToRestaurant(Request $request, Order $order): void
+    {
         abort_unless(
-            (string) $order->restaurant_id ===
-            (string) $request->user()->restaurant_id,
+            (string) $order->restaurant_id === (string) $request->user()->restaurant_id,
             404
         );
     }
@@ -50,7 +47,7 @@ class OrderController extends Controller
 
     private function ensureOrderCanBeSent(Order $order): void
     {
-        if ($order->status !== 'open') {
+        if ($order->status !== 'open' || $order->confirmed_at !== null) {
             throw new HttpResponseException(response()->json([
                 'success' => false,
                 'message' => 'Cette commande ne peut plus être envoyée en cuisine.',
@@ -63,7 +60,8 @@ class OrderController extends Controller
         $orders = Order::with([
             'table:id,number,capacity',
             'user:id,name,role',
-            'items:id,order_id,menu_item_id,item_name,quantity,unit_price,total_price,kitchen_status,out_of_stock_at',        ])
+            'items:id,order_id,menu_item_id,item_name,quantity,unit_price,total_price,kitchen_status,out_of_stock_at',
+        ])
             ->where('restaurant_id', $request->user()->restaurant_id)
             ->orderBy('created_at', 'desc')
             ->paginate(30);
@@ -75,7 +73,7 @@ class OrderController extends Controller
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
 
-        return response()->json($order->load(['table', 'items.menuItem', 'payments']));
+        return response()->json($order->load(['table', 'user:id,name', 'items.menuItem', 'payments']));
     }
 
     public function store(Request $request)
@@ -87,7 +85,6 @@ class OrderController extends Controller
                 'guest_count' => 'nullable|integer|min:1|max:99',
             ]);
 
-            // Déduction du type
             $type = $request->input('type');
             $tableId = $request->input('table_id');
 
@@ -111,7 +108,7 @@ class OrderController extends Controller
             if ($tableId !== null) {
                 $table = Table::findOrFail($tableId);
                 if ((string) $table->restaurant_id !== (string) $request->user()->restaurant_id) {
-                    return response()->json(['message' => 'Cette table appartient à un autre restaurant.'], 404);
+                    return response()->json(['message' => 'Cette table appartient à un autre restaurant.'], 422);
                 }
                 if (! in_array($table->status, ['free', 'occupied'], true)) {
                     return response()->json([
@@ -173,11 +170,9 @@ class OrderController extends Controller
             $quantity = $request->quantity ?? 1;
             $restaurantId = $request->user()->restaurant_id;
 
-            // Valider les options
             $optionIds = collect($request->input('options', []))->pluck('menu_item_option_id')->all();
             $options = MenuItemOption::whereIn('id', $optionIds)->get()->keyBy('id');
 
-            // Toutes les options doivent exister ET appartenir au plat
             foreach ($optionIds as $id) {
                 $opt = $options->get($id);
                 if (! $opt || (string) $opt->menu_item_id !== (string) $menuItem->id) {
@@ -185,7 +180,6 @@ class OrderController extends Controller
                 }
             }
 
-            // Valider les règles métier (required_single, optional_single)
             $categorySlug = $menuItem->category?->slug;
             $requiresPiment = in_array($categorySlug, ['plats-principaux', 'grillades'], true);
 
@@ -205,7 +199,6 @@ class OrderController extends Controller
                 }
             }
 
-            // Suppléments : uniquement sur plats-principaux / grillades
             $supplementIds = collect($request->input('supplements', []))
                 ->pluck('restaurant_supplement_id')->all();
 
@@ -223,15 +216,13 @@ class OrderController extends Controller
                 return response()->json(['message' => 'Un ou plusieurs suppléments sont introuvables.'], 422);
             }
 
-            // Calcul des prix
             $basePrice = $menuItem->price;
             $optionsUnitDelta = 0;
-            $frozenOptions = []; // à copier dans order_item_options
+            $frozenOptions = [];
 
             foreach ($options as $opt) {
                 $priceDelta = 0;
                 if ($opt->linked_menu_item_id) {
-                    // Boisson : lire le prix du menu_item lié
                     $linked = MenuItem::find($opt->linked_menu_item_id);
                     $priceDelta = $linked?->price ?? 0;
                 } else {
@@ -274,7 +265,6 @@ class OrderController extends Controller
                 'special_instructions' => $request->special_instructions,
             ]);
 
-            // Copier les options figées
             foreach ($frozenOptions as $frozen) {
                 $orderItem->options()->create($frozen);
             }
@@ -321,12 +311,7 @@ class OrderController extends Controller
         $this->ensureOrderBelongsToRestaurant($request, $order);
         $this->ensureOrderCanBeSent($order);
         try {
-            $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
-            $order->table?->syncCurrentOrder();
-
-            foreach ($order->items as $item) {
-                $item->update(['kitchen_status' => 'pending']);
-            }
+            $order->update(['confirmed_at' => now()]);
 
             LogService::log($request, 'order.confirmed',
                 "Commande #{$order->order_number} confirmée",
@@ -346,12 +331,16 @@ class OrderController extends Controller
         return $this->cancelOrder($request, $order);
     }
 
+    /**
+     * Envoi en cuisine : la commande reste « Ouverte » (visible par le cuisinier)
+     * et passe « En préparation » quand il lance le premier plat.
+     */
     public function sendToKitchen(Request $request, Order $order)
     {
         $this->ensureOrderBelongsToRestaurant($request, $order);
         $this->ensureOrderCanBeSent($order);
         try {
-            $order->update(['status' => 'in_progress', 'confirmed_at' => now()]);
+            $order->update(['confirmed_at' => now()]);
             $order->table?->syncCurrentOrder();
 
             $this->tryBroadcast(fn () => broadcast(new NewOrderReceived($order))->toOthers());
@@ -398,7 +387,6 @@ class OrderController extends Controller
         try {
             $request->validate([
                 'status' => 'required|in:open,in_progress,ready,served,paid,cancelled',
-
             ]);
             $allowedTransitions = [
                 'ready' => 'served',
@@ -427,9 +415,7 @@ class OrderController extends Controller
                 $order->update(['status' => $request->status]);
 
                 if ($request->status === 'served') {
-                    $order->items()->update([
-                        'kitchen_status' => 'served',
-                    ]);
+                    $order->items()->update(['kitchen_status' => 'served']);
                 }
             });
 
@@ -441,9 +427,7 @@ class OrderController extends Controller
 
             if ($request->status === 'served') {
                 $this->tryBroadcast(
-                    fn () => broadcast(
-                        new KitchenOrderUpdated($order->fresh(['items', 'table']))
-                    )->toOthers()
+                    fn () => broadcast(new KitchenOrderUpdated($order->fresh(['items', 'table'])))->toOthers()
                 );
             }
 
@@ -485,7 +469,6 @@ class OrderController extends Controller
         $oldStatus = null;
 
         $error = DB::transaction(function () use ($order, &$oldStatus) {
-            // Verrou : d'abord la commande, puis ses plats
             $locked = Order::whereKey($order->id)->lockForUpdate()->first();
             $oldStatus = $locked->status;
 
@@ -529,7 +512,6 @@ class OrderController extends Controller
         return response()->json(['success' => true, 'message' => 'Commande annulée', 'data' => $order]);
     }
 
-    /** Erreur inattendue : le détail va dans les journaux du serveur, jamais au client. */
     private function internalError(\Throwable $e)
     {
         report($e);
@@ -540,17 +522,15 @@ class OrderController extends Controller
         ], 500);
     }
 
-    /** Broadcast silencieux — ne casse pas la réponse si Reverb est absent. */
     private function tryBroadcast(callable $fn): void
     {
         try {
             $fn();
         } catch (\Throwable) {
-            // Reverb indisponible — le polling frontend compensera
+            // Reverb indisponible
         }
     }
 
-    /** Invalide le cache du dashboard rapide (stats sidebar). */
     private function invalidateStatsCache(Request $request): void
     {
         Cache::forget("stats_{$request->user()->restaurant_id}");

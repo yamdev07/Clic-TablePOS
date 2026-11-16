@@ -5,13 +5,14 @@
 namespace App\Models;
 
 use App\Events\TableStatusChanged;
+use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 class Table extends Model
 {
-    use HasFactory;
+    use BelongsToRestaurant, HasFactory;
 
     public $incrementing = false;
 
@@ -75,7 +76,10 @@ class Table extends Model
     public function syncCurrentOrder(): void
     {
         $current = $this->orders()
-            ->whereIn('status', Order::ACTIVE_STATUSES)
+            ->where(function ($q) {
+                $q->whereIn('status', Order::ACTIVE_STATUSES)
+                    ->orWhere(fn ($q) => $q->where('status', 'open')->whereNotNull('confirmed_at'));
+            })
             ->orderBy('created_at')
             ->orderBy('id')
             ->first();

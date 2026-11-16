@@ -95,7 +95,9 @@ class OrderTransitionsTest extends TestCase
 
             $open = $this->order('open');
             $this->postJson("/api/orders/{$open->id}/{$route}")->assertOk();
-            $this->assertSame('in_progress', $open->fresh()->status, $route);
+
+            $expected = 'open';
+            $this->assertSame($expected, $open->fresh()->status, $route);
         }
     }
 
@@ -353,7 +355,6 @@ class OrderTransitionsTest extends TestCase
         $this->patchJson("/api/orders/{$order->id}/status", [
             'status' => 'ready',
         ])->assertStatus(422);
-
         $this->assertSame('in_progress', $order->fresh()->status);
     }
 }

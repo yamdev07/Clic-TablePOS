@@ -77,7 +77,6 @@ class KitchenTest extends TestCase
 
         $response->assertStatus(200);
 
-        // Le menu item doit être marqué indisponible
         $this->assertDatabaseHas('menu_items', [
             'id' => $this->menuItem->id,
             'is_available' => false,
@@ -93,7 +92,6 @@ class KitchenTest extends TestCase
     /** @test */
     public function pending_orders_endpoint_returns_correct_statuses(): void
     {
-        // Créer un item en cuisson et un item prêt
         $cookingItem = OrderItem::create([
             'id' => (string) Str::uuid(),
             'order_id' => $this->order->id,
@@ -122,7 +120,6 @@ class KitchenTest extends TestCase
         $itemIds = collect($response->json())
             ->flatMap(fn ($order) => collect($order['items'])->pluck('id'));
 
-        // Les trois statuts (pending, cooking, ready) doivent être présents
         $this->assertTrue($itemIds->contains($this->item->id));
         $this->assertTrue($itemIds->contains($cookingItem->id));
         $this->assertTrue($itemIds->contains($readyItem->id));
@@ -156,7 +153,6 @@ class KitchenTest extends TestCase
             'total_price' => 1500,
             'kitchen_status' => 'cooking',
         ]);
-        // Les deux plats sont en préparation.
         $this->item->update(['kitchen_status' => 'cooking']);
 
         $response = $this->patchJson(
@@ -197,15 +193,8 @@ class KitchenTest extends TestCase
             'success' => true,
         ]);
 
-        $this->assertSame(
-            'ready',
-            $this->order->fresh()->status
-        );
-
-        $this->assertSame(
-            'ready',
-            $this->item->fresh()->kitchen_status
-        );
+        $this->assertSame('ready', $this->order->fresh()->status);
+        $this->assertSame('ready', $this->item->fresh()->kitchen_status);
     }
 
     /** @test */

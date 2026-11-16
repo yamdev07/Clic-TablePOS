@@ -4,19 +4,20 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Order extends Model
 {
+    use BelongsToRestaurant, HasFactory;
+
     /** Une commande open est un brouillon : elle n'est pas active. */
     public const ACTIVE_STATUSES = ['in_progress', 'ready', 'served'];
 
     /** Un plat servi n'apparaît plus à l'écran de la cuisine, sauf s'il est signalé en rupture (out_of_stock_at). */
     public const KITCHEN_VISIBLE_ITEM_STATUSES = ['pending', 'cooking', 'ready'];
-
-    use HasFactory;
 
     public $incrementing = false;
 
@@ -47,21 +48,6 @@ class Order extends Model
                 $order->order_number = 'ORD-'.date('Ymd').'-'.strtoupper(Str::random(6));
             }
         });
-    }
-
-    /**
-     * Restreindre le route model binding au restaurant de l'utilisateur connecté.
-     * Retourne 404 si l'order appartient à un autre restaurant.
-     */
-    public function resolveRouteBinding($value, $field = null): static
-    {
-        $query = $this->where($field ?? $this->getRouteKeyName(), $value);
-
-        if (auth()->check()) {
-            $query->where('restaurant_id', auth()->user()->restaurant_id);
-        }
-
-        return $query->firstOrFail();
     }
 
     public function restaurant()
@@ -99,6 +85,44 @@ class Order extends Model
         return $this->belongsTo(CollectionRequest::class, 'pending_collection_request_id');
     }
 
+    /**
+     * Fait avancer la commande selon l'état de ses plats en cuisine :
+     *   open → in_progress (dès qu'un plat est lancé par le cuisinier)
+     *   → ready (tous les plats prêts ou servis)
+     *   → served (tous les plats servis).
+     * Un plat ajouté à une commande prête/servie la renvoie « en préparation ».
+     * Ne revient jamais à « open » et ne touche pas aux commandes payées / annulées.
+     * Retourne l'ancien statut si la commande a changé, sinon null.
+     */
+    public function syncStatusFromItems(): ?string
+    {
+        if (! in_array($this->status, ['open', 'in_progress', 'ready', 'served'], true)) {
+            return null;
+        }
+
+        $statuses = $this->items()->pluck('kitchen_status');
+        if ($statuses->isEmpty()) {
+            return null;
+        }
+
+        $target = match (true) {
+            $statuses->every(fn ($s) => $s === 'served') => 'served',
+            $statuses->every(fn ($s) => in_array($s, ['ready', 'served'], true)) => 'ready',
+            $statuses->contains(fn ($s) => $s !== 'pending') => 'in_progress',
+            $this->status === 'open' => 'open',
+            default => 'in_progress', // nouveau plat sur une commande prête/servie
+        };
+
+        if ($target === $this->status) {
+            return null;
+        }
+
+        $old = $this->status;
+        $this->update(['status' => $target]);
+
+        return $old;
+    }
+
     /** Étape à l'écran de la cuisine : pending, preparing, ready, ou null si la commande n'y figure pas. */
     public function kitchenStage(): ?string
     {
@@ -122,7 +146,6 @@ class Order extends Model
     {
         $this->loadMissing(['items.menuItem', 'items.options', 'table']);
 
-        // Dans le modèle, $this->table serait le nom de la table SQL : on lit la relation chargée
         $table = $this->getRelation('table');
 
         $items = $this->items

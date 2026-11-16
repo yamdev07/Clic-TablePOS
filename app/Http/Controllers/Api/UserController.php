@@ -37,7 +37,8 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
-            'role' => 'required|in:admin,manager,waiter,kitchen,cashier',        ]);
+            'role' => 'required|in:admin,manager,waiter,kitchen,cashier',
+        ]);
 
         $user = User::create([
             'id' => (string) Str::uuid(),

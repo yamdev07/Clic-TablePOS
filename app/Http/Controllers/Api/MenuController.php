@@ -15,13 +15,10 @@ use Illuminate\Validation\Rule;
 
 class MenuController extends Controller
 {
-    private function ensureMenuItemBelongsToRestaurant(
-        Request $request,
-        MenuItem $item
-    ): void {
+    private function ensureMenuItemBelongsToRestaurant(Request $request, MenuItem $item): void
+    {
         abort_unless(
-            (string) $item->restaurant_id ===
-            (string) $request->user()->restaurant_id,
+            (string) $item->restaurant_id === (string) $request->user()->restaurant_id,
             404
         );
     }
@@ -64,7 +61,6 @@ class MenuController extends Controller
             ->orderBy('display_order')
             ->get();
 
-        // Ajouter orders_count sur chaque plat
         $categories->each(function (Category $category) use ($ordersCountByItem) {
             $category->menuItems->each(function (MenuItem $item) use ($ordersCountByItem) {
                 $item->setAttribute('orders_count', (int) ($ordersCountByItem[$item->id] ?? 0));
@@ -91,11 +87,7 @@ class MenuController extends Controller
             'name' => 'required|string',
             'price' => 'required|integer|min:0',
             'preparation_time' => 'nullable|integer|min:1|max:240',
-            'category_id' => [
-                'nullable',
-                Rule::exists('categories', 'id')
-                    ->where('restaurant_id', $request->user()->restaurant_id),
-            ],
+            'category_id' => ['nullable', $this->ownCategory($request)],
         ]);
 
         $item = MenuItem::create([
@@ -121,12 +113,7 @@ class MenuController extends Controller
         $this->ensureMenuItemBelongsToRestaurant($request, $item);
 
         $request->validate([
-            'category_id' => [
-                'sometimes',
-                'nullable',
-                Rule::exists('categories', 'id')
-                    ->where('restaurant_id', $request->user()->restaurant_id),
-            ],
+            'category_id' => ['sometimes', 'nullable', $this->ownCategory($request)],
             'preparation_time' => 'sometimes|integer|min:1|max:240',
             'options' => 'nullable|array',
             'options.*.type' => 'required|in:required_single,optional_single,optional_multi',
@@ -138,7 +125,6 @@ class MenuController extends Controller
         $old = $item->only(['name', 'price']);
         $item->update($request->only(['name', 'price', 'category_id', 'description', 'preparation_time']));
 
-        // Gestion des options si fournies
         if ($request->has('options')) {
             $this->syncOptions($request, $item, $request->input('options', []));
         }
@@ -157,7 +143,6 @@ class MenuController extends Controller
      */
     private function syncOptions(Request $request, MenuItem $item, array $options): void
     {
-        // Règle métier : vérifier les catégories sensibles
         $categorySlug = $item->category?->slug;
         $requiresPiment = in_array($categorySlug, ['plats-principaux', 'grillades'], true);
 
@@ -170,10 +155,8 @@ class MenuController extends Controller
             }
         }
 
-        // Supprimer les options existantes
         $item->options()->delete();
 
-        // Recréer
         foreach ($options as $index => $opt) {
             $item->options()->create([
                 'id' => (string) Str::uuid(),
@@ -195,34 +178,27 @@ class MenuController extends Controller
         $itemId = $item->id;
 
         $deleted = DB::transaction(function () use ($item) {
-
-            // Récupérer les commandes qui utilisent cet article
             $orderIds = $item->orderItems()
                 ->pluck('order_id')
                 ->unique()
                 ->values();
 
-            // Verrouiller les commandes concernées et vérifier leurs statuts
             $orders = Order::whereIn('id', $orderIds)
                 ->lockForUpdate()
                 ->get();
 
-            // Refuser si au moins une commande n'est pas open
             if ($orders->contains(fn ($order) => $order->status !== 'open')) {
                 return false;
             }
 
-            // Retirer uniquement cet article de chaque commande open
             foreach ($orders as $order) {
                 $order->items()
                     ->where('menu_item_id', $item->id)
                     ->delete();
 
-                // Recalculer les montants sans supprimer les autres articles
                 $order->recalculate();
             }
 
-            // Supprimer l'article du menu
             $item->delete();
 
             return true;
@@ -243,6 +219,12 @@ class MenuController extends Controller
         );
 
         return response()->json(null, 204);
+    }
+
+    /** La catégorie doit appartenir au restaurant de l'utilisateur. */
+    private function ownCategory(Request $request)
+    {
+        return Rule::exists('categories', 'id')->where('restaurant_id', $request->user()->restaurant_id);
     }
 
     public function toggleAvailability(MenuItem $item, Request $request)

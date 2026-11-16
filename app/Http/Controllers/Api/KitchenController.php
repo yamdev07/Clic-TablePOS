@@ -16,13 +16,10 @@ use Illuminate\Support\Facades\DB;
 
 class KitchenController extends Controller
 {
-    private function ensureOrderBelongsToRestaurant(
-        Request $request,
-        Order $order
-    ): void {
+    private function ensureOrderBelongsToRestaurant(Request $request, Order $order): void
+    {
         abort_unless(
-            (string) $order->restaurant_id ===
-            (string) $request->user()->restaurant_id,
+            (string) $order->restaurant_id === (string) $request->user()->restaurant_id,
             404
         );
     }
@@ -36,13 +33,10 @@ class KitchenController extends Controller
         );
     }
 
-    private function ensureItemBelongsToRestaurant(
-        Request $request,
-        OrderItem $item
-    ): void {
+    private function ensureItemBelongsToRestaurant(Request $request, OrderItem $item): void
+    {
         abort_unless(
-            (string) $item->order->restaurant_id ===
-            (string) $request->user()->restaurant_id,
+            (string) $item->order->restaurant_id === (string) $request->user()->restaurant_id,
             404
         );
     }
@@ -53,18 +47,17 @@ class KitchenController extends Controller
         $this->ensureKitchenRole($request);
 
         $items = DB::transaction(function () use ($order) {
-            // Même ordre de verrous que l'annulation : la commande d'abord, puis ses plats
             $lockedOrder = Order::whereKey($order->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
             abort_unless(
-                $lockedOrder->status === 'in_progress',
+                $lockedOrder->status === 'in_progress'
+                    || ($lockedOrder->status === 'open' && $lockedOrder->confirmed_at !== null),
                 422,
                 'Seules les commandes en attente de préparation peuvent être lancées.'
             );
 
-            // Seuls les plats en attente sont lancés : les autres (par exemple une rupture) ne sont pas touchés
             $pending = OrderItem::where('order_id', $lockedOrder->id)
                 ->where('kitchen_status', 'pending')
                 ->lockForUpdate()
@@ -82,6 +75,7 @@ class KitchenController extends Controller
                     'started_at' => $item->started_at ?? now(),
                 ]);
             }
+            $lockedOrder->update(['status' => 'in_progress']);
 
             return $pending;
         });
@@ -106,7 +100,6 @@ class KitchenController extends Controller
         $this->ensureKitchenRole($request);
 
         [$items, $oldStatus] = DB::transaction(function () use ($order) {
-
             $lockedOrder = Order::whereKey($order->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -121,14 +114,12 @@ class KitchenController extends Controller
                 ->lockForUpdate()
                 ->get();
 
-            // La préparation doit avoir été lancée pour tous les plats
             abort_if(
                 $items->contains(fn ($item) => $item->kitchen_status === 'pending'),
                 422,
                 "La préparation n'est pas lancée pour tous les plats de cette commande."
             );
 
-            // Seuls les plats en cuisson deviennent prêts : les autres (une rupture) ne sont pas touchés
             $cooking = $items->where('kitchen_status', 'cooking');
 
             abort_if(
@@ -146,9 +137,7 @@ class KitchenController extends Controller
 
             $oldStatus = $lockedOrder->status;
 
-            $lockedOrder->update([
-                'status' => 'ready',
-            ]);
+            $lockedOrder->update(['status' => 'ready']);
 
             return [$cooking, $oldStatus];
         });
@@ -200,15 +189,21 @@ class KitchenController extends Controller
     public function pendingOrders(Request $request)
     {
         $this->ensureKitchenRole($request);
+
         $orders = Order::where('restaurant_id', $request->user()->restaurant_id)
-            ->whereIn('status', ['in_progress', 'ready'])
+            ->where(function ($q) {
+                // Commandes envoyées en cuisine : in_progress, ready,
+                // ou open avec confirmed_at (envoyées mais pas encore lancées)
+                $q->whereIn('status', ['in_progress', 'ready'])
+                    ->orWhere(fn ($q) => $q->where('status', 'open')->whereNotNull('confirmed_at'));
+            })
             ->whereHas('items', function ($query) {
                 $query->where(function ($q) {
                     $q->whereIn('kitchen_status', Order::KITCHEN_VISIBLE_ITEM_STATUSES)
                         ->orWhereNotNull('out_of_stock_at');
                 });
             })
-            ->with(['table', 'items'])
+            ->with(['table', 'items.menuItem', 'items.options'])
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();
@@ -224,7 +219,6 @@ class KitchenController extends Controller
         $this->ensureKitchenRole($request);
 
         $result = DB::transaction(function () use ($item) {
-            // Même ordre de verrous que l'annulation et la cuisine : la commande d'abord, puis le plat
             $lockedOrder = Order::whereKey($item->order_id)->lockForUpdate()->firstOrFail();
             $lockedItem = OrderItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
 
@@ -243,7 +237,6 @@ class KitchenController extends Controller
 
             $lockedItem->menuItem()->update(['is_available' => false]);
 
-            // Le plat en rupture n'est plus facturé
             $lockedOrder->recalculate();
 
             return [$lockedOrder, $lockedItem];
@@ -257,7 +250,6 @@ class KitchenController extends Controller
 
         [$order, $reported] = $result;
 
-        // Diffusion après la transaction : les écrans lisent des données déjà enregistrées
         $this->tryBroadcast(
             fn () => broadcast(
                 new KitchenOrderUpdated($order->fresh(['items', 'table']))

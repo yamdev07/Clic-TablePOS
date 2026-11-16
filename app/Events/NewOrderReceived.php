@@ -5,7 +5,7 @@ namespace App\Events;
 use App\Models\Order;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -14,7 +14,7 @@ use Illuminate\Queue\SerializesModels;
  * Canal : private-kitchen.{restaurant_id}  (cuisine)
  *       + private-restaurant.{restaurant_id} (admin / manager)
  */
-class NewOrderReceived implements ShouldBroadcast
+class NewOrderReceived implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -27,8 +27,8 @@ class NewOrderReceived implements ShouldBroadcast
         $restaurantId = $this->order->restaurant_id;
 
         return [
-            new PrivateChannel('kitchen.' . $restaurantId),
-            new PrivateChannel('restaurant.' . $restaurantId),
+            new PrivateChannel('kitchen.'.$restaurantId),
+            new PrivateChannel('restaurant.'.$restaurantId),
         ];
     }
 
@@ -42,17 +42,17 @@ class NewOrderReceived implements ShouldBroadcast
         $order = $this->order->load(['table', 'items']);
 
         return [
-            'id'           => $order->id,
+            'id' => $order->id,
             'order_number' => $order->order_number,
-            'status'       => $order->status,
-            'table'        => $order->table
+            'status' => $order->status,
+            'table' => $order->table
                 ? ['id' => $order->table->id, 'number' => $order->table->number]
                 : null,
             'items' => $order->items->map(fn ($i) => [
-                'id'                   => $i->id,
-                'item_name'            => $i->item_name,
-                'quantity'             => $i->quantity,
-                'kitchen_status'       => $i->kitchen_status,
+                'id' => $i->id,
+                'item_name' => $i->item_name,
+                'quantity' => $i->quantity,
+                'kitchen_status' => $i->kitchen_status,
                 'special_instructions' => $i->special_instructions,
             ]),
         ];

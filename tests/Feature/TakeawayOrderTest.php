@@ -204,14 +204,14 @@ class TakeawayOrderTest extends TestCase
 
         // Envoi en cuisine
         $this->postJson("/api/orders/{$order->id}/send-to-kitchen")->assertOk();
-        $this->assertSame('in_progress', $order->fresh()->status);
-
+        $this->assertSame('open', $order->fresh()->status);
         // Kitchen : lancer
         $kitchen = User::factory()->create([
             'restaurant_id' => $this->restaurant->id,
             'role' => 'kitchen',
         ]);
         Sanctum::actingAs($kitchen);
+        // Le test passe en in_progress via `startOrderCooking`
         $this->patchJson("/api/kitchen/orders/{$order->id}/cooking")->assertOk();
 
         // Kitchen : prête

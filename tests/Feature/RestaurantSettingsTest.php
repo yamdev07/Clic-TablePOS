@@ -13,6 +13,10 @@ use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Config fiscale du restaurant (TVA, service, IFU, RCCM)
+ * + fiche restaurant (en-tête des factures) et création des comptes caissier.
+ */
 class RestaurantSettingsTest extends TestCase
 {
     use RefreshDatabase;
@@ -27,7 +31,7 @@ class RestaurantSettingsTest extends TestCase
     {
         parent::setUp();
 
-        $this->restaurant = Restaurant::factory()->create();
+        $this->restaurant = Restaurant::factory()->create(['name' => 'Clic&Table Café']);
         $this->table = Table::factory()->create([
             'restaurant_id' => $this->restaurant->id,
             'status' => 'occupied',
@@ -76,9 +80,9 @@ class RestaurantSettingsTest extends TestCase
         return $order->fresh();
     }
 
-    // ------------------------------------------------------------------
-    // 1. Lecture : admin + manager
-    // ------------------------------------------------------------------
+    // ==================================================================
+    // PARTIE 1 : Config fiscale (TVA, service, IFU, RCCM)
+    // ==================================================================
 
     public function test_only_admin_and_manager_can_read_restaurant_settings(): void
     {
@@ -93,10 +97,6 @@ class RestaurantSettingsTest extends TestCase
         }
     }
 
-    // ------------------------------------------------------------------
-    // 2. Écriture : admin uniquement
-    // ------------------------------------------------------------------
-
     public function test_only_admin_can_update_restaurant_settings(): void
     {
         $this->actingAsRole('manager');
@@ -108,10 +108,6 @@ class RestaurantSettingsTest extends TestCase
         $this->actingAsRole('admin');
         $this->patchJson('/api/restaurant/settings', ['ifu' => 'X'])->assertOk();
     }
-
-    // ------------------------------------------------------------------
-    // 3. Identité fiscale
-    // ------------------------------------------------------------------
 
     public function test_admin_can_update_fiscal_identity(): void
     {
@@ -131,10 +127,6 @@ class RestaurantSettingsTest extends TestCase
         $this->assertSame('Plateau, Rue du Commerce', $fresh->address);
     }
 
-    // ------------------------------------------------------------------
-    // 4. Désactivation TVA et service
-    // ------------------------------------------------------------------
-
     public function test_admin_can_disable_tax_and_service(): void
     {
         $this->actingAsRole('admin');
@@ -149,10 +141,6 @@ class RestaurantSettingsTest extends TestCase
         $this->assertFalse($fresh->settings['service_charge_enabled']);
     }
 
-    // ------------------------------------------------------------------
-    // 5. Validation des payloads invalides
-    // ------------------------------------------------------------------
-
     public function test_admin_cannot_set_invalid_payload(): void
     {
         $this->actingAsRole('admin');
@@ -166,10 +154,6 @@ class RestaurantSettingsTest extends TestCase
             ->assertJsonValidationErrors('tax_enabled');
     }
 
-    // ------------------------------------------------------------------
-    // 6. TVA désactivée → tax = 0 sur les nouvelles commandes
-    // ------------------------------------------------------------------
-
     public function test_disabled_tax_produces_zero_tax_on_new_orders(): void
     {
         $this->actingAsRole('admin');
@@ -179,13 +163,9 @@ class RestaurantSettingsTest extends TestCase
 
         $this->assertSame(1000, $order->subtotal);
         $this->assertSame(0, $order->tax);
-        $this->assertSame(50, $order->service_charge);   // 5 % actif
+        $this->assertSame(50, $order->service_charge);
         $this->assertSame(1050, $order->total);
     }
-
-    // ------------------------------------------------------------------
-    // 7. Service désactivé → service = 0 sur les nouvelles commandes
-    // ------------------------------------------------------------------
 
     public function test_disabled_service_charge_produces_zero_service_on_new_orders(): void
     {
@@ -195,18 +175,13 @@ class RestaurantSettingsTest extends TestCase
         $order = $this->openOrderWithDish();
 
         $this->assertSame(1000, $order->subtotal);
-        $this->assertSame(180, $order->tax);            // 18 % actif
+        $this->assertSame(180, $order->tax);
         $this->assertSame(0, $order->service_charge);
         $this->assertSame(1180, $order->total);
     }
 
-    // ------------------------------------------------------------------
-    // 8. Commandes payées : montants figés malgré changement de config
-    // ------------------------------------------------------------------
-
     public function test_paid_orders_keep_their_historic_totals_when_tax_is_disabled_later(): void
     {
-        // 1. Commande servie + payée avec config par défaut (18 % + 5 %)
         $this->actingAsRole('cashier');
         $order = $this->openOrderWithDish();
         $order->update(['status' => 'served']);
@@ -223,14 +198,79 @@ class RestaurantSettingsTest extends TestCase
         $this->assertSame(180, $fresh->tax);
         $this->assertSame(50, $fresh->service_charge);
 
-        // 2. L'admin désactive la TVA
         $this->actingAsRole('admin');
         $this->patchJson('/api/restaurant/settings', ['tax_enabled' => false])->assertOk();
 
-        // 3. La commande payée est FIGÉE
         $fresh = $order->fresh();
         $this->assertSame(1230, $fresh->total);
         $this->assertSame(180, $fresh->tax);
         $this->assertSame(50, $fresh->service_charge);
+    }
+
+    // ==================================================================
+    // PARTIE 2 : Fiche restaurant (en-tête des factures) + comptes caissier
+    // ==================================================================
+
+    /** @test */
+    public function any_staff_member_can_read_restaurant_details(): void
+    {
+        $this->actingAsRole('cashier');
+
+        $this->getJson('/api/restaurant')->assertOk()
+            ->assertJsonPath('name', 'Clic&Table Café')
+            ->assertJsonMissingPath('settings');
+    }
+
+    /** @test */
+    public function admin_can_update_restaurant_details(): void
+    {
+        $this->actingAsRole('admin');
+
+        $this->putJson('/api/restaurant', [
+            'name' => 'Cactus Hôtel',
+            'email' => 'contact@cactushotel.com',
+            'phone' => '+229 00 00 00 00',
+            'address' => 'Cotonou, Bénin',
+        ])->assertOk()->assertJsonPath('name', 'Cactus Hôtel');
+
+        $this->assertDatabaseHas('restaurants', ['id' => $this->restaurant->id, 'address' => 'Cotonou, Bénin']);
+    }
+
+    /** @test */
+    public function non_admin_cannot_update_restaurant_details(): void
+    {
+        $this->actingAsRole('manager');
+
+        $this->putJson('/api/restaurant', ['name' => 'X', 'email' => 'x@x.com'])->assertForbidden();
+    }
+
+    /** @test */
+    public function restaurant_email_must_stay_unique(): void
+    {
+        Restaurant::factory()->create(['email' => 'pris@example.com']);
+        $this->actingAsRole('admin');
+
+        $this->putJson('/api/restaurant', ['name' => 'A', 'email' => 'pris@example.com'])
+            ->assertUnprocessable()->assertJsonValidationErrors('email');
+    }
+
+    /** @test */
+    public function admin_can_create_a_cashier_account(): void
+    {
+        $this->actingAsRole('admin');
+
+        $this->postJson('/api/users', [
+            'name' => 'Awa Caisse', 'email' => 'caisse@example.com', 'password' => 'secret123', 'role' => 'cashier',
+        ])->assertCreated()->assertJsonPath('role', 'cashier');
+    }
+
+    /** @test */
+    public function admin_cannot_create_a_platform_account(): void
+    {
+        $this->actingAsRole('admin');
+
+        $this->postJson('/api/users', [
+            'name' => 'Hack', 'email' => 'hack@example.com', 'password' => 'secret123', 'role' => 'super_admin',
+        ])->assertUnprocessable();
     }
 }

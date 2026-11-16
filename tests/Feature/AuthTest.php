@@ -95,4 +95,55 @@ class AuthTest extends TestCase
         $response->assertStatus(200)
             ->assertJson(['id' => $user->id]);
     }
+
+    /** @test */
+    public function deactivated_user_cannot_login()
+    {
+        User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'email' => 'off@example.com',
+            'password' => bcrypt('password123'),
+            'is_active' => false,
+        ]);
+
+        $this->postJson('/api/login', ['email' => 'off@example.com', 'password' => 'password123'])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'account_inactive']);
+    }
+
+    /** @test */
+    public function user_of_suspended_restaurant_cannot_login()
+    {
+        $this->restaurant->update(['status' => 'suspended']);
+        User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'email' => 'susp@example.com',
+            'password' => bcrypt('password123'),
+        ]);
+
+        $this->postJson('/api/login', ['email' => 'susp@example.com', 'password' => 'password123'])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'account_inactive']);
+    }
+
+    /** @test */
+    public function existing_token_is_rejected_once_user_is_deactivated()
+    {
+        $user = User::factory()->create(['restaurant_id' => $this->restaurant->id]);
+        $headers = ['Authorization' => 'Bearer '.$user->createToken('auth_token')->plainTextToken];
+
+        $this->getJson('/api/me', $headers)->assertOk();
+
+        $user->update(['is_active' => false]);
+        $this->app['auth']->forgetGuards();
+
+        $this->getJson('/api/me', $headers)->assertStatus(403);
+        $this->postJson('/api/logout', [], $headers)->assertOk();
+    }
+
+    /** @test */
+    public function login_validation_errors_return_422()
+    {
+        $this->postJson('/api/login', ['email' => 'not-an-email'])->assertStatus(422);
+    }
 }
