@@ -61,7 +61,7 @@ class PaymentTest extends TestCase
             'item_name' => $menuItem->name,
             'quantity' => 2,
             'unit_price' => 5000,
-            'total_price' => 10000,
+            'total_price' => 10000, 
         ]);
 
         $this->order->recalculate();

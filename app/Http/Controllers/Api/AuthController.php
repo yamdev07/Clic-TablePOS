@@ -7,12 +7,12 @@ use App\Models\ActivityLog;
 use App\Models\Restaurant;
 use App\Models\User;
 use App\Services\LogService;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -65,7 +65,7 @@ class AuthController extends Controller
                 'token' => $token,
             ]);
 
-        } catch (ValidationException $e) {
+                } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
