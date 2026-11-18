@@ -691,4 +691,34 @@ class KitchenOrderWorkflowTest extends TestCase
         $this->assertNotNull($apiOrder);
         $this->assertSame('pending', $apiOrder['kitchen_stage']);
     }
+        public function test_the_kitchen_payload_exposes_the_sending_time_and_the_guest_count(): void
+    {
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['cooking']);
+        $sentAt = now()->subMinutes(5)->startOfSecond();
+        $order->update(['confirmed_at' => $sentAt, 'guest_count' => 4]);
+
+        $payload = $order->fresh()->toKitchenArray();
+        $this->assertSame(4, $payload['guest_count']);
+        $this->assertSame($sentAt->toISOString(), $payload['confirmed_at']);
+
+        $apiOrder = collect($this->getJson('/api/kitchen/pending')->assertOk()->json())
+            ->firstWhere('id', $order->id);
+
+        $this->assertNotNull($apiOrder);
+        $this->assertSame(4, $apiOrder['guest_count']);
+        $this->assertSame($sentAt->toISOString(), $apiOrder['confirmed_at']);
+    }
+
+    public function test_the_kitchen_payload_has_null_sending_time_and_guest_count_when_unknown(): void
+    {
+        $order = $this->order('in_progress', ['cooking']);
+
+        $payload = $order->fresh()->toKitchenArray();
+
+        $this->assertArrayHasKey('guest_count', $payload);
+        $this->assertArrayHasKey('confirmed_at', $payload);
+        $this->assertNull($payload['guest_count']);
+        $this->assertNull($payload['confirmed_at']);
+    }
 }

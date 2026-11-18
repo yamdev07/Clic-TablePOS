@@ -166,6 +166,8 @@ class Order extends Model
             'order_number' => $this->order_number,
             'status' => $this->status,
             'type' => $this->type,
+                        'guest_count' => $this->guest_count !== null ? (int) $this->guest_count : null,
+            'confirmed_at' => $this->confirmed_at?->toISOString(),
             'table' => $table ? ['number' => $table->number] : null,
             'kitchen_stage' => $this->kitchenStage(),
             'estimated_prep_time' => (int) $items
