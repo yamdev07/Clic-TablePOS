@@ -34,16 +34,18 @@ class OrderController extends Controller
             404
         );
     }
-
-    private function ensureOrderIsEditable(Order $order): void
-    {
-        if ($order->status !== 'open') {
-            throw new HttpResponseException(response()->json([
-                'success' => false,
-                'message' => 'Impossible de modifier cette commande : elle a déjà été envoyée en cuisine.',
-            ], 422));
-        }
+private function ensureOrderIsEditable(Order $order): void
+{
+    // Modifiable tant que :
+    // - la commande est "open" (brouillon OU envoyée mais pas encore lancée par le cuisinier)
+    // - ET aucune demande d'encaissement en attente
+    if ($order->status !== 'open' || $order->pending_collection_request_id !== null) {
+        throw new HttpResponseException(response()->json([
+            'success' => false,
+            'message' => 'Impossible de modifier cette commande : la préparation a commencé ou un encaissement est en attente.',
+        ], 422));
     }
+}
 
     private function ensureOrderCanBeSent(Order $order): void
     {

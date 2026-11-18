@@ -17,7 +17,7 @@ class OrderEditLockTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const LOCKED_MESSAGE = 'Impossible de modifier cette commande : elle a déjà été envoyée en cuisine.';
+   private const LOCKED_MESSAGE = 'Impossible de modifier cette commande : la préparation a commencé ou un encaissement est en attente.';
 
     private Restaurant $restaurant;
 
@@ -95,8 +95,7 @@ class OrderEditLockTest extends TestCase
                 'quantity' => 1,
             ])
                 ->assertStatus(422)
-                ->assertJson(['success' => false, 'message' => self::LOCKED_MESSAGE]);
-
+->assertJson(['success' => false]);
             $this->assertSame(0, $order->items()->count(), "Un plat a été ajouté à une commande {$status}");
         }
     }

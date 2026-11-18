@@ -123,11 +123,17 @@ class Order extends Model
         return $old;
     }
 
-    /** Étape à l'écran de la cuisine : pending, preparing, ready, ou null si la commande n'y figure pas. */
+        /** Étape à l'écran de la cuisine : pending, preparing, ready, ou null si la commande n'y figure pas. */
     public function kitchenStage(): ?string
     {
         if ($this->status === 'ready') {
             return 'ready';
+        }
+
+        // Envoyée en cuisine mais pas encore lancée : elle reste « open » avec confirmed_at.
+        // Un brouillon (open sans confirmed_at) n'apparaît pas à l'écran de la cuisine.
+        if ($this->status === 'open') {
+            return $this->confirmed_at !== null ? 'pending' : null;
         }
 
         if ($this->status !== 'in_progress') {

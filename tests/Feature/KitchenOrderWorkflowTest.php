@@ -676,4 +676,19 @@ class KitchenOrderWorkflowTest extends TestCase
             }
         );
     }
+        public function test_a_sent_order_that_is_not_started_yet_is_pending_in_the_kitchen(): void
+    {
+        $this->actingAsRole('kitchen');
+        $order = $this->order('open', ['pending']);
+        $order->update(['confirmed_at' => now()]);
+
+        $event = new KitchenOrderUpdated($order->fresh());
+        $this->assertSame('pending', $event->broadcastWith()['kitchen_stage']);
+
+        $apiOrder = collect($this->getJson('/api/kitchen/pending')->assertOk()->json())
+            ->firstWhere('id', $order->id);
+
+        $this->assertNotNull($apiOrder);
+        $this->assertSame('pending', $apiOrder['kitchen_stage']);
+    }
 }
