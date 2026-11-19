@@ -19,13 +19,14 @@ class MenuItem extends Model
     protected $fillable = [
         'id', 'restaurant_id', 'category_id', 'name', 'description', 'price', 'cost',
         'image', 'preparation_time', 'is_available', 'is_active', 'is_recommended',
-        'display_order', 'modifiers', 'taxes',
+        'display_order', 'modifiers', 'taxes', 'out_of_stock_at', 'out_of_stock_reason', 'out_of_stock_by',
     ];
 
     protected $casts = [
         'price' => 'integer',
         'is_available' => 'boolean',
         'modifiers' => 'array',
+        'out_of_stock_at' => 'datetime',
     ];
 
     public function restaurant()
@@ -46,5 +47,10 @@ class MenuItem extends Model
     public function options()
     {
         return $this->hasMany(MenuItemOption::class);
+    }
+
+    public function outOfStockBy()
+    {
+        return $this->belongsTo(User::class, 'out_of_stock_by');
     }
 }

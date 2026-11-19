@@ -34,18 +34,19 @@ class OrderController extends Controller
             404
         );
     }
-private function ensureOrderIsEditable(Order $order): void
-{
-    // Modifiable tant que :
-    // - la commande est "open" (brouillon OU envoyée mais pas encore lancée par le cuisinier)
-    // - ET aucune demande d'encaissement en attente
-    if ($order->status !== 'open' || $order->pending_collection_request_id !== null) {
-        throw new HttpResponseException(response()->json([
-            'success' => false,
-            'message' => 'Impossible de modifier cette commande : la préparation a commencé ou un encaissement est en attente.',
-        ], 422));
+
+    private function ensureOrderIsEditable(Order $order): void
+    {
+        // Modifiable tant que :
+        // - la commande est "open" (brouillon OU envoyée mais pas encore lancée par le cuisinier)
+        // - ET aucune demande d'encaissement en attente
+        if ($order->status !== 'open' || $order->pending_collection_request_id !== null) {
+            throw new HttpResponseException(response()->json([
+                'success' => false,
+                'message' => 'Impossible de modifier cette commande : la préparation a commencé ou un encaissement est en attente.',
+            ], 422));
+        }
     }
-}
 
     private function ensureOrderCanBeSent(Order $order): void
     {
@@ -272,6 +273,12 @@ private function ensureOrderIsEditable(Order $order): void
             }
 
             $order->recalculate();
+            // Si la commande est envoyée en cuisine, notifier la cuisine du changement
+            if ($order->confirmed_at !== null) {
+                $this->tryBroadcast(fn () => broadcast(
+                    new KitchenOrderUpdated($order->fresh(['items', 'table']))
+                )->toOthers());
+            }
 
             LogService::log($request, 'order.item_added',
                 "Ajout x{$quantity} {$menuItem->name} → commande #{$order->order_number}",
@@ -296,6 +303,12 @@ private function ensureOrderIsEditable(Order $order): void
 
             $order->items()->where('id', $itemId)->delete();
             $order->recalculate();
+            // Si la commande est envoyée en cuisine, notifier la cuisine
+            if ($order->confirmed_at !== null) {
+                $this->tryBroadcast(fn () => broadcast(
+                    new KitchenOrderUpdated($order->fresh(['items', 'table']))
+                )->toOthers());
+            }
 
             LogService::log($request, 'order.item_removed',
                 "Suppression de \"{$itemName}\" — commande #{$order->order_number}",

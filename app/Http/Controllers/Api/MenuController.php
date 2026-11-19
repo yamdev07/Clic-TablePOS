@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\MenuItemOutOfStock;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\MenuItem;
@@ -238,5 +239,93 @@ class MenuController extends Controller
             'menu_item', $item->id);
 
         return response()->json($item);
+    }
+
+    public function markOutOfStock(Request $request, MenuItem $item)
+    {
+        $this->ensureMenuItemBelongsToRestaurant($request, $item);
+
+        if ($item->out_of_stock_at !== null) {
+            return response()->json(['message' => 'Ce plat est déjà en rupture.'], 422);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'required|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request, $item, $validated) {
+            $item->update([
+                'is_available' => false,
+                'out_of_stock_at' => now(),
+                'out_of_stock_reason' => $validated['reason'],
+                'out_of_stock_by' => $request->user()->id,
+            ]);
+
+            // 1. Commandes envoyées (pas lancées) qui contiennent ce plat → notifier le serveur
+            $sentOrders = Order::where('restaurant_id', $item->restaurant_id)
+                ->where('confirmed_at', '!=', null)
+                ->where('status', 'open')
+                ->whereHas('items', fn ($q) => $q->where('menu_item_id', $item->id))
+                ->get();
+
+            foreach ($sentOrders as $order) {
+                $this->tryBroadcast(fn () => broadcast(new MenuItemOutOfStock($item, $order))->toOthers());
+            }
+
+            // 2. Commandes en cours / prêtes / servies qui contiennent ce plat → recalculer
+            $activeOrders = Order::where('restaurant_id', $item->restaurant_id)
+                ->whereIn('status', ['in_progress', 'ready', 'served'])
+                ->whereHas('items', fn ($q) => $q->where('menu_item_id', $item->id))
+                ->get();
+
+            foreach ($activeOrders as $order) {
+                foreach ($order->items()->where('menu_item_id', $item->id)->get() as $orderItem) {
+                    if ($orderItem->kitchen_status === 'pending') {
+                        $orderItem->update([
+                            'out_of_stock_at' => now(),
+                            'kitchen_status' => 'served',
+                        ]);
+                    }
+                }
+                $order->recalculate();
+            }
+        });
+
+        LogService::log($request, 'menu.item_out_of_stock',
+            "Article \"{$item->name}\" en rupture : {$validated['reason']}",
+            'menu_item', $item->id);
+
+        return response()->json($item->fresh()->load('outOfStockBy'), 200);
+    }
+
+    public function markInStock(Request $request, MenuItem $item)
+    {
+        $this->ensureMenuItemBelongsToRestaurant($request, $item);
+
+        if ($item->out_of_stock_at === null) {
+            return response()->json(['message' => 'Ce plat n\'est pas en rupture.'], 422);
+        }
+
+        $item->update([
+            'is_available' => true,
+            'out_of_stock_at' => null,
+            'out_of_stock_reason' => null,
+            'out_of_stock_by' => null,
+        ]);
+
+        LogService::log($request, 'menu.item_in_stock',
+            "Article \"{$item->name}\" de nouveau disponible",
+            'menu_item', $item->id);
+
+        return response()->json($item->fresh(), 200);
+    }
+
+    private function tryBroadcast(callable $fn): void
+    {
+        try {
+            $fn();
+        } catch (\Throwable) {
+            // Reverb indisponible
+        }
     }
 }

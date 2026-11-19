@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\KitchenOrderUpdated;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -9,6 +10,7 @@ use App\Models\Restaurant;
 use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -17,7 +19,7 @@ class OrderEditLockTest extends TestCase
 {
     use RefreshDatabase;
 
-   private const LOCKED_MESSAGE = 'Impossible de modifier cette commande : la préparation a commencé ou un encaissement est en attente.';
+    private const LOCKED_MESSAGE = 'Impossible de modifier cette commande : la préparation a commencé ou un encaissement est en attente.';
 
     private Restaurant $restaurant;
 
@@ -95,7 +97,7 @@ class OrderEditLockTest extends TestCase
                 'quantity' => 1,
             ])
                 ->assertStatus(422)
-->assertJson(['success' => false]);
+                ->assertJson(['success' => false]);
             $this->assertSame(0, $order->items()->count(), "Un plat a été ajouté à une commande {$status}");
         }
     }
@@ -112,5 +114,21 @@ class OrderEditLockTest extends TestCase
 
             $this->assertDatabaseHas('order_items', ['id' => $item->id]);
         }
+    }
+
+    public function test_adding_item_to_sent_order_notifies_kitchen(): void
+    {
+        Event::fake([KitchenOrderUpdated::class]);
+
+        $order = $this->orderWithStatus('open');
+        $order->update(['confirmed_at' => now()]);
+        $this->itemFor($order);
+
+        $this->postJson("/api/orders/{$order->id}/items", [
+            'menu_item_id' => $this->dish->id,
+            'quantity' => 1,
+        ])->assertCreated();
+
+        Event::assertDispatched(KitchenOrderUpdated::class);
     }
 }

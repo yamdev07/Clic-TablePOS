@@ -223,4 +223,23 @@ class KitchenEstimatedPrepTimeTest extends TestCase
 
         $this->assertSame(30, $dish->fresh()->preparation_time);
     }
+
+    public function test_to_kitchen_array_exposes_confirmed_at_and_guest_count(): void
+    {
+        $order = Order::create([
+            'id' => (string) Str::uuid(),
+            'restaurant_id' => $this->restaurant->id,
+            'table_id' => $this->table->id,
+            'type' => 'dine_in',
+            'user_id' => $this->admin->id,
+            'status' => 'open',
+            'confirmed_at' => now(),
+            'guest_count' => 4,
+        ]);
+
+        $data = $order->toKitchenArray();
+
+        $this->assertNotNull($data['confirmed_at']);
+        $this->assertSame(4, $data['guest_count']);
+    }
 }

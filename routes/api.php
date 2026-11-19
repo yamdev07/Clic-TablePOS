@@ -79,6 +79,8 @@ Route::middleware(['auth:sanctum', 'active', 'tenant'])->group(function () {
     Route::match(['put', 'patch'], '/menu/{item}', [MenuController::class, 'update']);
     Route::delete('/menu/{item}', [MenuController::class, 'destroy']);
     Route::patch('/menu/{item}/availability', [MenuController::class, 'toggleAvailability']);
+    Route::patch('/menu/{item}/out-of-stock', [MenuController::class, 'markOutOfStock']);
+    Route::patch('/menu/{item}/in-stock', [MenuController::class, 'markInStock']);
 
     // Suppléments partagés
     Route::get('/supplements', [SupplementController::class, 'index']);
