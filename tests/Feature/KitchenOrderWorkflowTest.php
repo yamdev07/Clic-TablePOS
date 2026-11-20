@@ -721,4 +721,21 @@ class KitchenOrderWorkflowTest extends TestCase
         $this->assertNull($payload['guest_count']);
         $this->assertNull($payload['confirmed_at']);
     }
+        public function test_an_order_with_no_dish_to_show_has_no_kitchen_stage(): void
+    {
+        $emptied = $this->order('open', []);
+        $emptied->update(['confirmed_at' => now()]);
+
+        $served = $this->order('in_progress', ['served']);
+
+        $allOut = $this->order('in_progress', ['served']);
+        $allOut->items()->update(['out_of_stock_at' => now()]);
+
+        $stage = fn (Order $order) => (new KitchenOrderUpdated($order->fresh()))->broadcastWith()['kitchen_stage'];
+
+        $this->assertNull($stage($emptied));
+        $this->assertNull($stage($served));
+        // Plat en rupture : la commande reste à l'écran (décision à prendre avec l'espace serveur)
+        $this->assertSame('pending', $stage($allOut));
+    }
 }

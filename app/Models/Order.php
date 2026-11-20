@@ -126,6 +126,17 @@ class Order extends Model
         /** Étape à l'écran de la cuisine : pending, preparing, ready, ou null si la commande n'y figure pas. */
     public function kitchenStage(): ?string
     {
+        // Sans plat à montrer à la cuisine (commande vidée par le serveur, plats tous servis),
+        // pas de carte. Même règle que toKitchenArray() et que /kitchen/pending.
+        $hasDishForKitchen = $this->items->contains(
+            fn ($item) => $item->out_of_stock_at !== null
+                || in_array($item->kitchen_status, self::KITCHEN_VISIBLE_ITEM_STATUSES, true)
+        );
+
+        if (! $hasDishForKitchen) {
+            return null;
+        }
+
         if ($this->status === 'ready') {
             return 'ready';
         }
