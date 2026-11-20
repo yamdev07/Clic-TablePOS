@@ -350,9 +350,12 @@ class MenuController extends Controller
 
         // Diffusions après la transaction : si elle échoue, personne n'est prévenu à tort
         $item = $item->fresh();
-
         foreach ($sentOrders as $order) {
             $this->tryBroadcast(fn () => broadcast(new MenuItemOutOfStock($item, $order))->toOthers());
+            // La cuisine voit le plat « Indisponible » et ne peut pas lancer la commande
+            $this->tryBroadcast(fn () => broadcast(
+                new KitchenOrderUpdated($order->fresh(['items', 'table']))
+            )->toOthers());
         }
 
         foreach ($changedOrders as $order) {
@@ -389,6 +392,23 @@ class MenuController extends Controller
             'out_of_stock_reason' => null,
             'out_of_stock_by' => null,
         ]);
+
+               // La cuisine doit voir que le plat n'est plus « Indisponible » sur les commandes en attente
+        $ordersToRefresh = Order::where('restaurant_id', $item->restaurant_id)
+            ->where(function ($q) {
+                $q->where(fn ($q) => $q->where('status', 'open')->whereNotNull('confirmed_at'))
+                    ->orWhere('status', 'in_progress');
+            })
+            ->whereHas('items', fn ($q) => $q->where('menu_item_id', $item->id)
+                ->where('kitchen_status', 'pending')
+                ->whereNull('out_of_stock_at'))
+            ->get();
+
+        foreach ($ordersToRefresh as $order) {
+            $this->tryBroadcast(fn () => broadcast(
+                new KitchenOrderUpdated($order->fresh(['items', 'table']))
+            )->toOthers());
+        }
 
         LogService::log($request, 'menu.item_in_stock',
             "Article \"{$item->name}\" de nouveau disponible",

@@ -190,6 +190,10 @@ class Order extends Model
                 'quantity' => $item->quantity,
                 'kitchen_status' => $item->kitchen_status,
                 'out_of_stock' => $item->out_of_stock_at !== null,
+                                // Plat pas encore lancé alors que le menu le déclare en rupture : la commande ne peut pas être lancée
+                'menu_out_of_stock' => $item->out_of_stock_at === null
+                    && $item->kitchen_status === 'pending'
+                    && $item->menuItem?->out_of_stock_at !== null,
                 'special_instructions' => $item->special_instructions,
                 'started_at' => $item->started_at?->toISOString(),
                 'ready_at' => $item->ready_at?->toISOString(),

@@ -468,4 +468,46 @@ class MenuOutOfStockTest extends TestCase
             $this->assertArrayNotHasKey($key, $payload);
         }
     }
+        public function test_the_kitchen_screen_flags_the_dish_on_sent_orders_when_a_menu_rupture_is_declared(): void
+    {
+        Event::fake([KitchenOrderUpdated::class, MenuItemOutOfStock::class]);
+        $sent = $this->orderWith('open', ['pending']);
+
+        Sanctum::actingAs($this->admin);
+        $this->patchJson("/api/menu/{$this->dish->id}/out-of-stock", ['reason' => 'Test'])->assertOk();
+
+        Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
+        Event::assertDispatched(KitchenOrderUpdated::class, function ($event) use ($sent) {
+            $payload = $event->broadcastWith();
+
+            return $event->order->id === $sent->id
+                && $payload['kitchen_stage'] === 'pending'
+                && count($payload['items']) === 1
+                && $payload['items'][0]['menu_out_of_stock'] === true;
+        });
+    }
+
+    public function test_putting_a_dish_back_in_stock_refreshes_the_kitchen_screen(): void
+    {
+        $sent = $this->orderWith('open', ['pending']);
+        $this->dish->update([
+            'is_available' => false,
+            'out_of_stock_at' => now(),
+            'out_of_stock_reason' => 'Test',
+        ]);
+        Event::fake([KitchenOrderUpdated::class]);
+
+        Sanctum::actingAs(User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role' => 'manager',
+        ]));
+        $this->patchJson("/api/menu/{$this->dish->id}/in-stock")->assertOk();
+
+        Event::assertDispatchedTimes(KitchenOrderUpdated::class, 1);
+        Event::assertDispatched(KitchenOrderUpdated::class, function ($event) use ($sent) {
+            $items = $event->broadcastWith()['items'];
+
+            return $event->order->id === $sent->id && $items[0]['menu_out_of_stock'] === false;
+        });
+    }
 }

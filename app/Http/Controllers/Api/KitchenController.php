@@ -67,6 +67,17 @@ class KitchenController extends Controller
                 422,
                 'Cette commande ne contient aucun plat en attente de préparation.'
             );
+                        // Un plat déclaré en rupture dans le menu ne part pas en cuisson : le serveur doit modifier ou annuler
+            $unavailable = $pending->load('menuItem')->first(
+                fn ($item) => $item->menuItem?->out_of_stock_at !== null
+            );
+
+            if ($unavailable !== null) {
+                abort(
+                    422,
+                    "Le plat « {$unavailable->item_name} » est en rupture : le serveur doit modifier ou annuler la commande."
+                );
+            }
 
             foreach ($pending as $item) {
                 $item->update([

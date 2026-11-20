@@ -737,5 +737,63 @@ class KitchenOrderWorkflowTest extends TestCase
         $this->assertNull($stage($served));
         // Plat en rupture : la commande reste à l'écran (décision à prendre avec l'espace serveur)
         $this->assertSame('pending', $stage($allOut));
+    }    public function test_an_order_with_a_dish_declared_out_of_stock_in_the_menu_cannot_be_started(): void
+    {
+        $this->actingAsRole('kitchen');
+        $order = $this->order('open', ['pending']);
+        $order->update(['confirmed_at' => now()]);
+        $this->dish->update([
+            'is_available' => false,
+            'out_of_stock_at' => now(),
+            'out_of_stock_reason' => 'Test',
+        ]);
+
+        $this->patchJson($this->startUrl($order))
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'message',
+                "Le plat « {$this->dish->name} » est en rupture : le serveur doit modifier ou annuler la commande."
+            );
+
+        $item = $order->items()->first();
+        $this->assertSame('pending', $item->kitchen_status);
+        $this->assertNull($item->started_at);
+        $this->assertSame('open', $order->fresh()->status);
+
+        // Une fois le plat remis en vente, le lancement passe
+        $this->dish->update(['is_available' => true, 'out_of_stock_at' => null, 'out_of_stock_reason' => null]);
+
+        $this->patchJson($this->startUrl($order))->assertOk();
+        $this->assertSame('in_progress', $order->fresh()->status);
+    }
+
+    public function test_the_kitchen_payload_flags_pending_dishes_declared_out_of_stock_in_the_menu(): void
+    {
+        $this->actingAsRole('kitchen');
+        $order = $this->order('in_progress', ['pending', 'cooking', 'pending']);
+        // Un des deux plats en attente est déjà barré sur la commande
+        $order->items()->where('kitchen_status', 'pending')->first()
+            ->update(['out_of_stock_at' => now(), 'kitchen_status' => 'served']);
+        $this->dish->update([
+            'is_available' => false,
+            'out_of_stock_at' => now(),
+            'out_of_stock_reason' => 'Test',
+        ]);
+
+        $items = collect((new KitchenOrderUpdated($order->fresh()))->broadcastWith()['items']);
+
+        $this->assertTrue($items->firstWhere('kitchen_status', 'pending')['menu_out_of_stock']);
+        $this->assertFalse($items->firstWhere('kitchen_status', 'cooking')['menu_out_of_stock']);
+        $this->assertFalse($items->firstWhere('out_of_stock', true)['menu_out_of_stock']);
+
+        // L'API donne la même information que l'événement
+        $apiOrder = collect($this->getJson('/api/kitchen/pending')->assertOk()->json())
+            ->firstWhere('id', $order->id);
+        $this->assertTrue(collect($apiOrder['items'])->firstWhere('kitchen_status', 'pending')['menu_out_of_stock']);
+
+        // Plat remis en vente : plus aucun plat marqué
+        $this->dish->update(['is_available' => true, 'out_of_stock_at' => null, 'out_of_stock_reason' => null]);
+        $again = collect((new KitchenOrderUpdated($order->fresh()))->broadcastWith()['items']);
+        $this->assertTrue($again->every(fn ($item) => $item['menu_out_of_stock'] === false));
     }
 }
