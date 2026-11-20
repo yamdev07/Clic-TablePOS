@@ -224,4 +224,68 @@ class MenuOutOfStockTest extends TestCase
         $this->assertLessThan($totalBefore, $fresh->total);
         $this->assertNotNull($item->fresh()->out_of_stock_at);
     }
+     public function test_only_kitchen_manager_and_admin_can_declare_a_rupture(): void
+    {
+        foreach (['waiter', 'cashier'] as $role) {
+            Sanctum::actingAs(User::factory()->create([
+                'restaurant_id' => $this->restaurant->id,
+                'role' => $role,
+            ]));
+
+            $this->patchJson("/api/menu/{$this->dish->id}/out-of-stock", ['reason' => 'Test'])
+                ->assertForbidden();
+
+            $this->assertNull($this->dish->fresh()->out_of_stock_at, "rôle {$role}");
+            $this->assertTrue($this->dish->fresh()->is_available, "rôle {$role}");
+        }
+
+        foreach (['kitchen', 'manager', 'admin'] as $role) {
+            $dish = MenuItem::factory()->create(['restaurant_id' => $this->restaurant->id]);
+            Sanctum::actingAs(User::factory()->create([
+                'restaurant_id' => $this->restaurant->id,
+                'role' => $role,
+            ]));
+
+            $this->patchJson("/api/menu/{$dish->id}/out-of-stock", ['reason' => 'Test'])
+                ->assertOk();
+
+            $this->assertNotNull($dish->fresh()->out_of_stock_at, "rôle {$role}");
+        }
+    }
+
+    public function test_only_manager_and_admin_can_put_a_dish_back_in_stock(): void
+    {
+        $rupture = [
+            'is_available' => false,
+            'out_of_stock_at' => now(),
+            'out_of_stock_reason' => 'Test',
+        ];
+
+        foreach (['waiter', 'cashier', 'kitchen'] as $role) {
+                       $this->dish->refresh()->update($rupture);
+            Sanctum::actingAs(User::factory()->create([
+                'restaurant_id' => $this->restaurant->id,
+                'role' => $role,
+            ]));
+
+            $this->patchJson("/api/menu/{$this->dish->id}/in-stock")->assertForbidden();
+
+            $this->assertNotNull($this->dish->fresh()->out_of_stock_at, "rôle {$role}");
+        }
+
+        foreach (['manager', 'admin'] as $role) {
+            $this->dish->update($rupture);
+            Sanctum::actingAs(User::factory()->create([
+                'restaurant_id' => $this->restaurant->id,
+                'role' => $role,
+            ]));
+
+            $this->patchJson("/api/menu/{$this->dish->id}/in-stock")->assertOk();
+
+            $this->assertNull($this->dish->fresh()->out_of_stock_at, "rôle {$role}");
+            $this->assertTrue($this->dish->fresh()->is_available, "rôle {$role}");
+        }
+    }
+
+
 }

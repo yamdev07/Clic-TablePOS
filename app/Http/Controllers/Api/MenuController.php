@@ -23,6 +23,23 @@ class MenuController extends Controller
             404
         );
     }
+        private function ensureCanDeclareRupture(Request $request): void
+    {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager', 'kitchen'], true),
+            403,
+            "Seuls le cuisinier, le gérant et l'administrateur peuvent signaler une rupture."
+        );
+    }
+
+    private function ensureCanRestock(Request $request): void
+    {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager'], true),
+            403,
+            "Seuls le gérant et l'administrateur peuvent remettre un plat en vente."
+        );
+    }
 
     public function index(Request $request)
     {
@@ -243,7 +260,8 @@ class MenuController extends Controller
 
     public function markOutOfStock(Request $request, MenuItem $item)
     {
-        $this->ensureMenuItemBelongsToRestaurant($request, $item);
+         $this->ensureMenuItemBelongsToRestaurant($request, $item);
+        $this->ensureCanDeclareRupture($request);
 
         if ($item->out_of_stock_at !== null) {
             return response()->json(['message' => 'Ce plat est déjà en rupture.'], 422);
@@ -301,6 +319,7 @@ class MenuController extends Controller
     public function markInStock(Request $request, MenuItem $item)
     {
         $this->ensureMenuItemBelongsToRestaurant($request, $item);
+        $this->ensureCanRestock($request);
 
         if ($item->out_of_stock_at === null) {
             return response()->json(['message' => 'Ce plat n\'est pas en rupture.'], 422);
