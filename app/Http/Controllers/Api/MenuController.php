@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\KitchenOrderUpdated;
 use App\Events\MenuItemOutOfStock;
+use App\Events\OutOfStockReported;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\MenuItem;
@@ -258,62 +260,111 @@ class MenuController extends Controller
         return response()->json($item);
     }
 
-    public function markOutOfStock(Request $request, MenuItem $item)
+       public function markOutOfStock(Request $request, MenuItem $item)
     {
-         $this->ensureMenuItemBelongsToRestaurant($request, $item);
+        $this->ensureMenuItemBelongsToRestaurant($request, $item);
         $this->ensureCanDeclareRupture($request);
-
-        if ($item->out_of_stock_at !== null) {
-            return response()->json(['message' => 'Ce plat est déjà en rupture.'], 422);
-        }
 
         $validated = $request->validate([
             'reason' => 'required|string|max:255',
         ]);
 
-        DB::transaction(function () use ($request, $item, $validated) {
-            $item->update([
-                'is_available' => false,
-                'out_of_stock_at' => now(),
-                'out_of_stock_reason' => $validated['reason'],
-                'out_of_stock_by' => $request->user()->id,
-            ]);
+        $result = DB::transaction(function () use ($request, $item, $validated) {
+            // Verrous dans le même ordre que la cuisine : commandes, plats, puis menu
 
-            // 1. Commandes envoyées (pas lancées) qui contiennent ce plat → notifier le serveur
+            // 1. Commandes envoyées, pas encore lancées : le serveur doit les modifier ou les annuler
             $sentOrders = Order::where('restaurant_id', $item->restaurant_id)
-                ->where('confirmed_at', '!=', null)
                 ->where('status', 'open')
+                ->whereNotNull('confirmed_at')
                 ->whereHas('items', fn ($q) => $q->where('menu_item_id', $item->id))
+                ->with('table')
+                ->lockForUpdate()
                 ->get();
 
-            foreach ($sentOrders as $order) {
-                $this->tryBroadcast(fn () => broadcast(new MenuItemOutOfStock($item, $order))->toOthers());
+            // 2. Commandes déjà lancées : seuls les plats pas encore commencés sont barrés
+            $launchedOrders = Order::where('restaurant_id', $item->restaurant_id)
+                ->where('status', 'in_progress')
+                ->whereHas('items', fn ($q) => $q->where('menu_item_id', $item->id)
+                    ->where('kitchen_status', 'pending')
+                    ->whereNull('out_of_stock_at'))
+                ->lockForUpdate()
+                ->get();
+
+            $toStrike = [];
+            foreach ($launchedOrders as $order) {
+                $pending = $order->items()
+                    ->where('menu_item_id', $item->id)
+                    ->where('kitchen_status', 'pending')
+                    ->whereNull('out_of_stock_at')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($pending->isNotEmpty()) {
+                    $toStrike[] = [$order, $pending];
+                }
             }
 
-            // 2. Commandes en cours / prêtes / servies qui contiennent ce plat → recalculer
-            $activeOrders = Order::where('restaurant_id', $item->restaurant_id)
-                ->whereIn('status', ['in_progress', 'ready', 'served'])
-                ->whereHas('items', fn ($q) => $q->where('menu_item_id', $item->id))
-                ->get();
+            // Mise à jour atomique : si deux déclarations arrivent en même temps, une seule passe
+            $updated = MenuItem::whereKey($item->id)
+                ->whereNull('out_of_stock_at')
+                ->update([
+                    'is_available' => false,
+                    'out_of_stock_at' => now(),
+                    'out_of_stock_reason' => $validated['reason'],
+                    'out_of_stock_by' => $request->user()->id,
+                ]);
 
-            foreach ($activeOrders as $order) {
-                foreach ($order->items()->where('menu_item_id', $item->id)->get() as $orderItem) {
-                    if ($orderItem->kitchen_status === 'pending') {
-                        $orderItem->update([
-                            'out_of_stock_at' => now(),
-                            'kitchen_status' => 'served',
-                        ]);
-                    }
+            if ($updated === 0) {
+                return null;
+            }
+
+            $changedOrders = [];
+            $struckItems = [];
+            foreach ($toStrike as [$order, $pending]) {
+                foreach ($pending as $orderItem) {
+                    $orderItem->update([
+                        'out_of_stock_at' => now(),
+                        'kitchen_status' => 'served',
+                    ]);
+                    $struckItems[] = [$order, $orderItem];
                 }
                 $order->recalculate();
+                $changedOrders[] = $order;
             }
+
+            return [$sentOrders, $changedOrders, $struckItems];
         });
+
+        if ($result === null) {
+            return response()->json(['message' => 'Ce plat est déjà en rupture.'], 422);
+        }
+
+        [$sentOrders, $changedOrders, $struckItems] = $result;
+
+        // Diffusions après la transaction : si elle échoue, personne n'est prévenu à tort
+        $item = $item->fresh();
+
+        foreach ($sentOrders as $order) {
+            $this->tryBroadcast(fn () => broadcast(new MenuItemOutOfStock($item, $order))->toOthers());
+        }
+
+        foreach ($changedOrders as $order) {
+            $this->tryBroadcast(fn () => broadcast(
+                new KitchenOrderUpdated($order->fresh(['items', 'table']))
+            )->toOthers());
+        }
+
+        foreach ($struckItems as [$order, $orderItem]) {
+            $this->tryBroadcast(fn () => broadcast(
+                new OutOfStockReported($order->fresh(['table']), $orderItem->fresh())
+            )->toOthers());
+        }
 
         LogService::log($request, 'menu.item_out_of_stock',
             "Article \"{$item->name}\" en rupture : {$validated['reason']}",
             'menu_item', $item->id);
 
-        return response()->json($item->fresh()->load('outOfStockBy'), 200);
+        return response()->json($item->load('outOfStockBy:id,name'), 200);
     }
 
     public function markInStock(Request $request, MenuItem $item)
