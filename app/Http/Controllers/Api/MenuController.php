@@ -250,7 +250,12 @@ class MenuController extends Controller
     public function toggleAvailability(MenuItem $item, Request $request)
     {
         $this->ensureMenuItemBelongsToRestaurant($request, $item);
-        $item->update(['is_available' => ! $item->is_available]);
+               $available = ! $item->is_available;
+
+        // Remettre un plat en vente efface aussi la rupture déclarée : sinon l'état serait incohérent
+        $item->update($available
+            ? ['is_available' => true, 'out_of_stock_at' => null, 'out_of_stock_reason' => null, 'out_of_stock_by' => null]
+            : ['is_available' => false]);
 
         $state = $item->is_available ? 'disponible' : 'indisponible';
         LogService::log($request, 'menu.availability_changed',

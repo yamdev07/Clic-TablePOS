@@ -223,4 +223,47 @@ class KitchenTest extends TestCase
             'kitchen_status' => 'pending',
         ]);
     }
+        public function test_a_rupture_from_the_card_records_who_reported_it_and_can_be_lifted(): void
+    {
+        $this->patchJson("/api/kitchen/items/{$this->item->id}/rupture")->assertOk();
+
+        $menuItem = $this->menuItem->fresh();
+        $this->assertFalse($menuItem->is_available);
+        $this->assertNotNull($menuItem->out_of_stock_at);
+        $this->assertSame('Signalé depuis la cuisine', $menuItem->out_of_stock_reason);
+        $this->assertSame($this->kitchenUser->id, $menuItem->out_of_stock_by);
+
+        $manager = User::factory()->create([
+            'restaurant_id' => $this->order->restaurant_id,
+            'role' => 'manager',
+        ]);
+        Sanctum::actingAs($manager);
+
+        $this->patchJson("/api/menu/{$this->menuItem->id}/in-stock")->assertOk();
+
+        $this->assertTrue($this->menuItem->fresh()->is_available);
+        $this->assertNull($this->menuItem->fresh()->out_of_stock_at);
+    }
+
+    public function test_a_rupture_from_the_card_keeps_an_existing_menu_rupture(): void
+    {
+        $admin = User::factory()->create([
+            'restaurant_id' => $this->order->restaurant_id,
+            'role' => 'admin',
+        ]);
+        $earlier = now()->subHour()->startOfSecond();
+        $this->menuItem->update([
+            'is_available' => false,
+            'out_of_stock_at' => $earlier,
+            'out_of_stock_reason' => 'Stock terminé',
+            'out_of_stock_by' => $admin->id,
+        ]);
+
+        $this->patchJson("/api/kitchen/items/{$this->item->id}/rupture")->assertOk();
+
+        $menuItem = $this->menuItem->fresh();
+        $this->assertSame('Stock terminé', $menuItem->out_of_stock_reason);
+        $this->assertSame($admin->id, $menuItem->out_of_stock_by);
+        $this->assertTrue($menuItem->out_of_stock_at->equalTo($earlier));
+    }
 }

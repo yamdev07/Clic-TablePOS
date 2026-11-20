@@ -435,4 +435,17 @@ class MenuOutOfStockTest extends TestCase
             ->assertJsonPath('message', 'Ce plat est déjà en rupture.');
         $this->assertSame('Test', $this->dish->fresh()->out_of_stock_reason);
     }
+        public function test_toggling_availability_back_on_clears_the_rupture(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $this->patchJson("/api/menu/{$this->dish->id}/out-of-stock", ['reason' => 'Test'])->assertOk();
+
+        $this->patchJson("/api/menu/{$this->dish->id}/availability")->assertOk();
+
+        $fresh = $this->dish->fresh();
+        $this->assertTrue($fresh->is_available);
+        $this->assertNull($fresh->out_of_stock_at);
+        $this->assertNull($fresh->out_of_stock_reason);
+        $this->assertNull($fresh->out_of_stock_by);
+    }
 }

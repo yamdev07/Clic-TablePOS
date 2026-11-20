@@ -1,7 +1,5 @@
 <?php
 
-// app/Http/Controllers/Api/KitchenController.php
-
 namespace App\Http\Controllers\Api;
 
 use App\Events\KitchenOrderUpdated;
@@ -11,6 +9,7 @@ use App\Events\WaiterCallRequested;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\MenuItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -218,7 +217,7 @@ class KitchenController extends Controller
         $this->ensureItemBelongsToRestaurant($request, $item);
         $this->ensureKitchenRole($request);
 
-        $result = DB::transaction(function () use ($item) {
+              $result = DB::transaction(function () use ($request, $item) {
             $lockedOrder = Order::whereKey($item->order_id)->lockForUpdate()->firstOrFail();
             $lockedItem = OrderItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
 
@@ -235,7 +234,15 @@ class KitchenController extends Controller
                 'kitchen_status' => 'served',
             ]);
 
-            $lockedItem->menuItem()->update(['is_available' => false]);
+                       // Le plat quitte le menu. Une rupture déjà déclarée garde son auteur, son motif et son heure.
+            MenuItem::whereKey($lockedItem->menu_item_id)->update(['is_available' => false]);
+            MenuItem::whereKey($lockedItem->menu_item_id)
+                ->whereNull('out_of_stock_at')
+                ->update([
+                    'out_of_stock_at' => now(),
+                    'out_of_stock_reason' => 'Signalé depuis la cuisine',
+                    'out_of_stock_by' => $request->user()->id,
+                ]);
 
             $lockedOrder->recalculate();
 
