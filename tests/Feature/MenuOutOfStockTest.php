@@ -448,4 +448,24 @@ class MenuOutOfStockTest extends TestCase
         $this->assertNull($fresh->out_of_stock_reason);
         $this->assertNull($fresh->out_of_stock_by);
     }
+        public function test_the_menu_rupture_event_targets_the_restaurant_channel_without_amounts(): void
+    {
+        $order = $this->sentOrder();
+        $event = new MenuItemOutOfStock($this->dish, $order);
+
+        $channels = collect($event->broadcastOn())->map(fn ($channel) => $channel->name)->all();
+        $this->assertSame(['private-restaurant.'.$this->restaurant->id], $channels);
+        $this->assertSame('menu.item.out_of_stock', $event->broadcastAs());
+
+        $payload = $event->broadcastWith();
+        $this->assertSame($this->dish->id, $payload['menu_item_id']);
+        $this->assertSame($order->id, $payload['order_id']);
+        $this->assertSame($order->order_number, $payload['order_number']);
+        $this->assertSame($this->table->number, $payload['table_number']);
+        $this->assertStringContainsString($this->dish->name, $payload['message']);
+
+        foreach (['total', 'subtotal', 'due_amount', 'paid_amount', 'price'] as $key) {
+            $this->assertArrayNotHasKey($key, $payload);
+        }
+    }
 }

@@ -28,7 +28,7 @@ class MenuItemOutOfStock implements ShouldBroadcastNow
 
     public function broadcastAs(): string
     {
-        return 'menu.item.out.of.stock';
+              return 'menu.item.out_of_stock';
     }
 
     public function broadcastWith(): array
