@@ -67,12 +67,14 @@ class MenuController extends Controller
 
         $ordersCountByItem = $countQuery->pluck('orders_count', 'menu_item_id');
 
-        $categories = Category::with(['menuItems' => function ($q) {
+                $categories = Category::with(['menuItems' => function ($q) {
             $q->where('is_active', true)
                 ->select(
                     'id', 'category_id', 'restaurant_id', 'name', 'description',
-                    'price', 'preparation_time', 'is_available', 'display_order'
+                    'price', 'preparation_time', 'is_available', 'display_order',
+                    'out_of_stock_at', 'out_of_stock_reason', 'out_of_stock_by'
                 )
+                ->with('outOfStockBy:id,name')
                 ->orderBy('display_order');
         }])
             ->where('restaurant_id', $restaurantId)
