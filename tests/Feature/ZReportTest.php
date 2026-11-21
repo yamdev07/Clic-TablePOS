@@ -266,18 +266,21 @@ class ZReportTest extends TestCase
 
     public function test_z_report_date_filter_changes_the_scope(): void
     {
+                // Horloge figée à 23 h 30 UTC, soit 00 h 30 le lendemain à Cotonou : les deux dates diffèrent,
+        // quelle que soit l'heure à laquelle le test est lancé.
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-20 23:30:00', 'UTC'));
         $this->actingAsRole('cashier');
         $order = $this->servedOrder();
         $this->pay($order)->assertCreated();
 
         // Rapport d'hier : rien
-        $yesterday = now()->subDay()->toDateString();
-        $data = $this->getJson("/api/stats/z-report?date={$yesterday}")->assertOk()->json();
+        $yesterday = now('Africa/Porto-Novo')->subDay()->toDateString();
+                $data = $this->getJson("/api/stats/z-report?date={$yesterday}")->assertOk()->json();
         $this->assertSame(0, $data['paid_orders']);
         $this->assertSame(0, $data['total_revenue']);
 
         // Rapport d'aujourd'hui : 1
-        $today = now()->toDateString();
+               $today = now('Africa/Porto-Novo')->toDateString();
         $data = $this->getJson("/api/stats/z-report?date={$today}")->assertOk()->json();
         $this->assertSame(1, $data['paid_orders']);
         $this->assertSame(1230, $data['total_revenue']);
