@@ -116,6 +116,7 @@ class MenuController extends Controller
           $this->ensureCanManageMenu($request);
         $request->validate([
             'name' => 'required|string',
+            'description' => 'nullable|string',
             'price' => 'required|integer|min:0',
             'preparation_time' => 'nullable|integer|min:1|max:240',
             'category_id' => ['nullable', $this->ownCategory($request)],
@@ -124,8 +125,8 @@ class MenuController extends Controller
         $item = MenuItem::create([
             'id' => (string) Str::uuid(),
             'restaurant_id' => $request->user()->restaurant_id,
-            'category_id' => $request->category_id,
-            'name' => $request->name,
+             'name' => $request->name,
+            'description' => $request->description,
             'price' => $request->price,
             'preparation_time' => $request->preparation_time ?? 15,
             'is_available' => true,
