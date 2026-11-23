@@ -42,6 +42,14 @@ class MenuController extends Controller
             "Seuls le gérant et l'administrateur peuvent remettre un plat en vente."
         );
     }
+        private function ensureCanManageMenu(Request $request): void
+    {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager'], true),
+            403,
+            "Seuls le gérant et l'administrateur peuvent modifier le menu."
+        );
+    }
 
     public function index(Request $request)
     {
@@ -105,6 +113,7 @@ class MenuController extends Controller
 
     public function store(Request $request)
     {
+          $this->ensureCanManageMenu($request);
         $request->validate([
             'name' => 'required|string',
             'price' => 'required|integer|min:0',
@@ -133,6 +142,7 @@ class MenuController extends Controller
     public function update(Request $request, MenuItem $item)
     {
         $this->ensureMenuItemBelongsToRestaurant($request, $item);
+        $this->ensureCanManageMenu($request);
 
         $request->validate([
             'category_id' => ['sometimes', 'nullable', $this->ownCategory($request)],
@@ -194,7 +204,8 @@ class MenuController extends Controller
 
     public function destroy(MenuItem $item, Request $request)
     {
-        $this->ensureMenuItemBelongsToRestaurant($request, $item);
+         $this->ensureMenuItemBelongsToRestaurant($request, $item);
+        $this->ensureCanManageMenu($request);
 
         $itemName = $item->name;
         $itemId = $item->id;
