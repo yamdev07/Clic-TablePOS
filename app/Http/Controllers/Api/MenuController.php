@@ -120,13 +120,19 @@ class MenuController extends Controller
             'price' => 'required|integer|min:0',
             'preparation_time' => 'nullable|integer|min:1|max:240',
             'category_id' => ['nullable', $this->ownCategory($request)],
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
+
+        $imagePath = $request->hasFile('image')
+            ? $request->file('image')->store("menu-items/{$request->user()->restaurant_id}", 'public')
+            : null;
 
         $item = MenuItem::create([
             'id' => (string) Str::uuid(),
             'restaurant_id' => $request->user()->restaurant_id,
              'name' => $request->name,
             'description' => $request->description,
+            'image' => $imagePath,
             'price' => $request->price,
             'preparation_time' => $request->preparation_time ?? 15,
             'is_available' => true,
