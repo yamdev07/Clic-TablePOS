@@ -13,6 +13,7 @@ use App\Models\OrderItem;
 use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -80,7 +81,7 @@ class MenuController extends Controller
                 ->select(
                     'id', 'category_id', 'restaurant_id', 'name', 'description',
                     'price', 'preparation_time', 'is_available', 'display_order',
-                    'out_of_stock_at', 'out_of_stock_reason', 'out_of_stock_by'
+                    'out_of_stock_at', 'out_of_stock_reason', 'out_of_stock_by', 'image'
                 )
                 ->with('outOfStockBy:id,name')
                 ->orderBy('display_order');
@@ -94,6 +95,7 @@ class MenuController extends Controller
         $categories->each(function (Category $category) use ($ordersCountByItem) {
             $category->menuItems->each(function (MenuItem $item) use ($ordersCountByItem) {
                 $item->setAttribute('orders_count', (int) ($ordersCountByItem[$item->id] ?? 0));
+                $item->setAttribute('image_url', $item->image ? Storage::disk('public')->url($item->image) : null);
             });
         });
 
