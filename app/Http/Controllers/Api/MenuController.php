@@ -269,9 +269,10 @@ class MenuController extends Controller
         return Rule::exists('categories', 'id')->where('restaurant_id', $request->user()->restaurant_id);
     }
 
-    public function toggleAvailability(MenuItem $item, Request $request)
+     public function toggleAvailability(MenuItem $item, Request $request)
     {
         $this->ensureMenuItemBelongsToRestaurant($request, $item);
+        $this->ensureCanManageMenu($request);
                $available = ! $item->is_available;
 
         // Remettre un plat en vente efface aussi la rupture déclarée : sinon l'état serait incohérent
