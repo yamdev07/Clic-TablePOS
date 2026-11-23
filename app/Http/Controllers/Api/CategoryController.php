@@ -20,9 +20,18 @@ class CategoryController extends Controller
             404
         );
     }
+        private function ensureCanManageCategories(Request $request): void
+    {
+        abort_unless(
+            in_array($request->user()->role, ['admin', 'manager'], true),
+            403,
+            "Seuls le gérant et l'administrateur peuvent gérer les catégories."
+        );
+    }
 
     public function store(Request $request)
     {
+          $this->ensureCanManageCategories($request);
         $request->validate([
             'name' => 'required|string|max:100',
             'icon' => 'nullable|string|max:10',
@@ -51,6 +60,7 @@ class CategoryController extends Controller
     public function update(Request $request, Category $category)
     {
         $this->ensureCategoryBelongsToRestaurant($request, $category);
+         $this->ensureCanManageCategories($request);
         $request->validate([
             'name' => 'sometimes|required|string|max:100',
             'icon' => 'nullable|string|max:10',
@@ -75,6 +85,7 @@ class CategoryController extends Controller
     public function destroy(Category $category, Request $request)
     {
         $this->ensureCategoryBelongsToRestaurant($request, $category);
+         $this->ensureCanManageCategories($request);
         // Empêcher la suppression si des plats y sont rattachés
         if ($category->menuItems()->exists()) {
             return response()->json([
